@@ -11,6 +11,7 @@ import { Avatar } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
 import { Badge, BreakNotice, Button, Card, EmptyState, FieldError, SectionTitle, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
+import { useAwaitingReveal } from "@/hooks/useAwaitingReveal";
 import { useDailyAllowance, useLimits } from "@/hooks/useLimits";
 import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { useTx } from "@/hooks/useTx";
@@ -18,7 +19,7 @@ import { appConfig } from "@/lib/config";
 import { sameAddress, STATUS_LABEL } from "@/lib/duel";
 import { formatAmount, formatDuration, parseAmount, shortAddress } from "@/lib/format";
 import { BREAK_OPTIONS } from "@/lib/limits";
-import { usePendingReveals, usePlayerDuels, usePlayerStats, type IndexerDuel } from "@/lib/indexer";
+import { usePlayerDuels, usePlayerStats, type IndexerDuel } from "@/lib/indexer";
 
 export default function MePage() {
   const { address } = useAccount();
@@ -59,10 +60,10 @@ function MyDuels({ address }: { address: Address }) {
 }
 
 function PendingReveals({ address }: { address: Address }) {
-  const { data } = usePendingReveals(address);
+  const data = useAwaitingReveal(address);
   const { find } = useSuitSecrets();
   const now = useNow();
-  if (!data?.length) return null;
+  if (!data.length) return null;
 
   return (
     <section className="rounded-2xl border-2 border-red bg-red-deep p-4 sm:p-5" data-testid="pending-reveals">

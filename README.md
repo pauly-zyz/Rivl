@@ -1,0 +1,244 @@
+# Rivl
+
+**Find your rival. Take the pot.** Platform duel 1 lawan 1 di Robinhood Chain: Coinflip, Dice Duel, dan Suit
+(batu-gunting-kertas) dengan taruhan ETH atau USDG. Smart contract mengunci kedua taruhan, menentukan pemenang secara
+bisa diverifikasi, dan membayar pemenang `2 × taruhan − fee 2,5%`. Rivl tidak pernah menjadi lawan pemain.
+
+> **Status:** belum diaudit dan belum di-deploy ke jaringan mana pun. Chainlink VRF belum tersedia di Robinhood Chain,
+> jadi Coinflip dan Dice belum siap mainnet (lihat [docs/technical-status.md](docs/technical-status.md)).
+
+| Dokumen | Isi |
+|---|---|
+| [docs/spec.md](docs/spec.md) | Spesifikasi lengkap (acuan utama) |
+| [docs/technical-status.md](docs/technical-status.md) | Jawaban pertanyaan teknis: VRF, USDG, chain ID/RPC, EVM, Ponder |
+| [contracts/README.md](contracts/README.md) | Detail contract, jaminan keamanan, integrasi frontend |
+| [CLAUDE.md](CLAUDE.md) | Aturan kerja singkat untuk repo ini |
+
+## Isi repo
+
+```
+contracts/   Foundry: DuelArena, adaptor Chainlink VRF v2.5, DevRandomnessProvider, test, ABI (contracts/abi)
+indexer/     Ponder 0.18: tabel duel + withdrawal, HTTP API (indexer/src/api/index.ts), GraphQL
+web/         Next.js 16 + wagmi 2 + viem + RainbowKit + Tailwind 4
+scripts/     dev-chain (Anvil + deploy), auto-fulfill, demo, dev (orkestrator `pnpm dev`)
+docs/        spec dan status teknis
+```
+
+---
+
+## 1. Menjalankan lokal
+
+### Prasyarat
+
+- Node.js **22.12+** dan pnpm **10** (`corepack enable`)
+- [Foundry](https://book.getfoundry.sh/getting-started/installation) (`anvil`, `forge`, `cast`)
+
+### Langkah
+
+```bash
+git clone --recurse-submodules <url-repo> rivl && cd rivl
+# sudah ter-clone tanpa submodule?  git submodule update --init --recursive
+pnpm install
+cp .env.example .env        # opsional untuk lokal; lihat DEV_EXTRA_ACCOUNTS di bawah
+pnpm dev
+```
+
+`pnpm dev` menjalankan semuanya dalam satu terminal (Ctrl+C menghentikan semuanya):
+
+| Komponen | Alamat | Keterangan |
+|---|---|---|
+| Anvil | `http://127.0.0.1:8545`, chain ID 31337 | Dimulai dari nol setiap kali |
+| Contract | `deployments/local.json` | DuelArena, DevRandomnessProvider, MockUSDG (6 desimal) |
+| Auto-fulfill | — | Menjawab request randomness otomatis setelah ~1,5 detik |
+| Indexer | `http://localhost:42069` | `/duels/open`, `/stats`, `/graphql`, … |
+| Web | `http://localhost:3000` | |
+
+### Bermain dari browser
+
+1. Isi `DEV_EXTRA_ACCOUNTS=<alamat wallet kamu>` di `.env`, lalu jalankan ulang `pnpm dev`. Alamat itu otomatis diberi
+   100 ETH dan 10.000 USDG lokal. Tidak perlu mengimpor private key apa pun.
+2. Di wallet (mis. MetaMask), tambahkan jaringan: RPC `http://127.0.0.1:8545`, chain ID `31337`, mata uang `ETH`.
+3. Buka `http://localhost:3000`, Connect, lalu buat duel. Untuk melawan diri sendiri, pakai dua alamat (dua profil
+   browser) dan isi keduanya di `DEV_EXTRA_ACCOUNTS`.
+
+> Karena chain lokal di-reset setiap `pnpm dev`, MetaMask bisa menolak transaksi dengan error *nonce*.
+> Perbaiki lewat Settings → Advanced → **Clear activity tab data**.
+
+### Test
+
+| Perintah | Isi |
+|---|---|
+| `pnpm test:contracts` | Foundry: 61 test (game, timeout, fee, admin, reentrancy, fuzz, adaptor VRF, test vector Suit) |
+| `pnpm test:web` | Vitest: commit Suit = test vector Foundry, backup/restore, geoblock, batas pribadi |
+| `pnpm e2e` | Playwright di chain lokal (menyalakan `pnpm dev` jika belum jalan) |
+| `pnpm demo` | Saat `pnpm dev` jalan: memainkan duel lewat script dan mencocokkan setiap query indexer dengan chain |
+| `pnpm typecheck` | TypeScript semua paket |
+
+Test e2e memainkan Coinflip ETH, Dice USDG (dengan approve), Suit sampai reveal, Suit timeout, cancel, dan claim
+dari browser, plus age gate, geoblock, batas pribadi, `/fair`, dan tata letak 375px/desktop tanpa error console.
+Playwright memakai dompet uji yang meneruskan transaksi ke akun Anvil (`web/e2e/wallet.ts`).
+
+Setelah mengubah `contracts/src`, jalankan `pnpm abi` untuk memperbarui ABI yang dipakai web dan indexer.
+
+---
+
+## 2. Deploy contract ke testnet
+
+> **Jangan deploy ke mainnet** sebelum checklist di bagian 5 selesai. Langkah ini untuk **Robinhood Chain Testnet**
+> (chain ID 46630, sumber: [docs.robinhood.com/chain/connecting](https://docs.robinhood.com/chain/connecting/)).
+
+Karena VRF belum tersedia, deploy testnet memakai **DevRandomnessProvider**: angka acak dikirim operator lewat
+`auto-fulfill`. Hasil Coinflip/Dice di testnet karena itu **tidak** provably fair; halaman `/fair` menampilkan
+peringatan ini secara otomatis.
+
+1. **Siapkan wallet deployer** khusus (bukan wallet utama) dan isi ETH testnet dari faucet resmi Robinhood Chain.
+2. **Isi konfigurasi**, tanpa private key di file:
+
+   ```bash
+   cd contracts
+   cp .env.example .env
+   # isi TREASURY, OWNER (opsional, sebaiknya multisig), USDG (alamat testnet ada di komentar .env.example)
+   read -s PRIVATE_KEY && export PRIVATE_KEY      # ketik/tempel private key; tidak tersimpan di file
+   ```
+
+3. **Simulasi dulu** (tanpa mengirim transaksi):
+
+   ```bash
+   forge script script/Deploy.s.sol --rpc-url robinhood_testnet
+   ```
+
+4. **Deploy dan verifikasi** di Blockscout:
+
+   ```bash
+   forge script script/Deploy.s.sol --rpc-url robinhood_testnet --broadcast \
+     --verify --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/
+   ```
+
+   Script ini men-deploy DevRandomnessProvider + DuelArena, mengatur fee 2,5%, dan memasang batas taruhan awal
+   (ETH 0,0005–0,5; USDG 1–1.000 per pemain). Pola URL verifikasi mengikuti contoh resmi untuk mainnet
+   ([Deploy a Contract](https://docs.robinhood.com/chain/deploy-smart-contracts/)); sesuaikan jika explorer testnet berbeda.
+
+5. **Catat hasilnya** dari output dan `contracts/broadcast/Deploy.s.sol/46630/run-latest.json`:
+   alamat `DuelArena`, alamat `DevRandomnessProvider`, dan **nomor blok** transaksi deploy DuelArena
+   (untuk `ARENA_START_BLOCK`).
+
+6. **Jika `OWNER` diisi**, owner baru (multisig) harus memanggil `acceptOwnership()` di DuelArena. Sampai itu terjadi,
+   deployer tetap owner.
+
+7. **Jalankan auto-fulfill** di mesin yang selalu menyala (owner DevRandomnessProvider = deployer):
+
+   ```bash
+   # di root repo, dengan ROBINHOOD_TESTNET_RPC dan ROBINHOOD_TESTNET_CHAIN_ID di .env
+   AUTO_FULFILL_CHAIN=testnet DEV_RANDOMNESS_ADDRESS=0x… ARENA_ADDRESS=0x… ARENA_START_BLOCK=… \
+     PRIVATE_KEY=$PRIVATE_KEY pnpm auto-fulfill
+   ```
+
+   Tanpa auto-fulfill, duel Coinflip/Dice tetap aman: setelah 1 jam siapa pun bisa memicu refund.
+
+**Dengan Chainlink VRF** (nanti, jika tersedia): isi `VRF_COORDINATOR`, `VRF_KEY_HASH`, dan `VRF_SUB_ID` dari halaman
+resmi Chainlink, deploy, lalu tambahkan alamat `ChainlinkVRFAdapter` sebagai consumer di subscription VRF.
+
+**Mengubah parameter** setelah deploy (owner): `setTokenConfig`, `setFeeBps` (maks. 10%), `setTimings`,
+`setTreasury`, `pause`/`unpause`. Contoh:
+
+```bash
+cast send $ARENA "setTokenConfig(address,bool,uint128,uint128)" $USDG true 1000000 100000000 \
+  --rpc-url robinhood_testnet --private-key $PRIVATE_KEY
+```
+
+---
+
+## 3. Konfigurasi indexer
+
+Indexer membaca `.env` di root. Untuk testnet:
+
+```bash
+INDEXER_CHAIN=testnet
+ROBINHOOD_TESTNET_RPC=https://…           # sebaiknya RPC berbayar (Alchemy/QuickNode/Chainstack); RPC publik dibatasi
+ROBINHOOD_TESTNET_CHAIN_ID=46630
+ARENA_ADDRESS=0x…                          # dari langkah deploy
+ARENA_START_BLOCK=…                        # blok deploy DuelArena
+DATABASE_URL=postgres://user:pass@host:5432/rivl
+DATABASE_SCHEMA=rivl_v1                    # nama baru setiap deploy indexer
+```
+
+Jalankan:
+
+```bash
+pnpm --filter @rivl/indexer start -- --port 42069
+```
+
+- Jika chain ID, RPC, atau alamat kosong, indexer berhenti dengan pesan yang menyebut variabel yang kurang.
+- `GET /ready` membalas 200 setelah indexer mengejar chain; `GET /status` menunjukkan blok terakhir yang diindeks.
+- Endpoint: `/duels/open`, `/duels/:id`, `/duels?ids=…`, `/players/:address/{duels,stats,pending-reveals,withdrawals}`,
+  `/results/recent`, `/stats`, `/graphql`, `/sql/*`. Semua bilangan uint dikirim sebagai string.
+- Indexer harus bisa diakses dari browser pengguna (web memanggilnya langsung). Taruh di belakang HTTPS.
+- Untuk mainnet: `INDEXER_CHAIN=mainnet`, `ROBINHOOD_RPC`, `ROBINHOOD_CHAIN_ID=4663`.
+
+---
+
+## 4. Deploy web
+
+Web adalah aplikasi Next.js di `web/` dalam pnpm workspace (ABI diimpor dari `@rivl/contracts`).
+
+**Environment** (lihat `.env.example`, bagian WEB):
+
+| Variabel | Contoh testnet |
+|---|---|
+| `NEXT_PUBLIC_CHAIN_ID` | `46630` |
+| `NEXT_PUBLIC_CHAIN_NAME` | `Robinhood Chain Testnet` |
+| `NEXT_PUBLIC_RPC_URL` | RPC (sebaiknya berbayar) |
+| `NEXT_PUBLIC_EXPLORER_URL` | `https://explorer.testnet.chain.robinhood.com` |
+| `NEXT_PUBLIC_ARENA_ADDRESS` | alamat DuelArena |
+| `NEXT_PUBLIC_USDG_ADDRESS` | alamat USDG testnet |
+| `NEXT_PUBLIC_INDEXER_URL` | URL publik indexer |
+| `NEXT_PUBLIC_X_URL` | akun X Rivl (tombol Notify me) |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | opsional, untuk MetaMask mobile/WalletConnect |
+| `BLOCKED_COUNTRIES` | `ID,US` (sesuaikan setelah konsultasi hukum) |
+| `GEO_COUNTRY_HEADER` | `x-vercel-ip-country` di Vercel, `cf-ipcountry` di Cloudflare |
+
+`NEXT_PUBLIC_*` ditanam saat build, jadi **build ulang** setiap kali nilainya berubah. `BLOCKED_COUNTRIES` dan
+`GEO_COUNTRY_HEADER` dibaca saat request.
+
+**Vercel:** impor repo, set *Root Directory* ke `web` (Vercel mendeteksi pnpm workspace dan meng-install dari root),
+isi environment di atas, deploy. Header negara `x-vercel-ip-country` dipasang otomatis oleh Vercel.
+
+**Server sendiri:**
+
+```bash
+pnpm install
+pnpm --filter @rivl/web build
+pnpm --filter @rivl/web start -- --port 3000
+```
+
+Taruh di belakang CDN yang memasang header negara, dan isi `GEO_COUNTRY_HEADER` dengan nama header tersebut.
+Tanpa itu, geoblock bisa dilewati dengan header palsu.
+
+Setelah deploy, cek: halaman utama memuat duel dari indexer, `/fair` menunjukkan sumber randomness yang benar, dan
+akses dengan header negara yang diblokir membalas 451 "Not available in your region".
+
+---
+
+## 5. Sebelum mainnet (docs/spec.md bagian 9)
+
+| Item | Status |
+|---|---|
+| Kelima tahap selesai dan semua test lulus | ✅ Selesai (lokal) |
+| Adaptor VRF diuji di testnet dengan VRF sungguhan | ⛔ Terblokir: VRF belum tersedia di Robinhood Chain |
+| Audit contract oleh pihak ketiga | ⬜ Belum |
+| Owner dan treasury dipindah ke multisig | ⬜ Belum (script sudah mendukung `OWNER`/`TREASURY` + `acceptOwnership`) |
+| Bug bounty aktif | ⬜ Belum |
+| Batas taruhan rendah selama minggu-minggu awal | ✅ Default script: ETH 0,0005–0,5, USDG 1–1.000 |
+| Konsultasi hukum selesai dan geoblock disesuaikan | ⬜ Belum (Terms & Responsible gaming masih placeholder) |
+
+Tambahan teknis sebelum mainnet:
+
+- Uji USDG sungguhan di testnet (memastikan bukan token fee-on-transfer/rebasing yang akan ditolak contract).
+- Uji indexer ke RPC Robinhood Chain sungguhan dan pilih provider RPC berbayar.
+- **Jangan pernah** deploy DevRandomnessProvider di mainnet (`VRF_COORDINATOR` wajib terisi).
+
+## Keamanan kunci
+
+- `.env` dan `contracts/.env` ada di `.gitignore`. Jangan commit private key dalam bentuk apa pun.
+- Simpan `PRIVATE_KEY` hanya di environment shell saat deploy. Untuk produksi, owner dan treasury adalah multisig;
+  deployer hanya dipakai sekali lalu tidak memegang peran apa pun.

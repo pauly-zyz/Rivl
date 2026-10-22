@@ -19,7 +19,7 @@ contracts/   Foundry. ABI hasil ekspor di contracts/abi/ (@rivl/contracts/abi)
 indexer/     Ponder 0.18. API: indexer/src/api/index.ts
 web/         Next.js 16 + wagmi 2 + RainbowKit. Baca web/AGENTS.md (Next 16 berbeda dari versi lama).
 scripts/     dev-chain, auto-fulfill, demo, dev (orkestrator)
-docs/        spec.md
+docs/        spec.md, technical-status.md (jawaban pertanyaan teknis bagian 8)
 ```
 
 ## Perintah

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
+import { createDuel, expectStatus, joinDuel } from "./ui";
 import { connect, deployment, getDuel, pageErrors, playerPage, takeCreatedPages } from "./wallet";
 
 /*
@@ -13,44 +14,6 @@ const SHOTS = "e2e-screens";
 
 const d = deployment();
 const [ALICE, BOB] = d.testAccounts as [`0x${string}`, `0x${string}`];
-
-async function createDuel(
-  page: Page,
-  opts: { game: "Coinflip" | "Dice Duel" | "Suit"; token: "ETH" | "USDG"; amount: string; pick?: string },
-): Promise<bigint> {
-  await page.goto("/");
-  await page.getByRole("main").getByRole("button", { name: "Create duel" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create duel" });
-  await dialog.getByRole("button", { name: opts.game, exact: true }).click();
-  await dialog.getByRole("button", { name: new RegExp(`^${opts.token}`) }).click();
-  await dialog.getByLabel("Stake amount").fill(opts.amount);
-  if (opts.pick) await dialog.getByRole("button", { name: opts.pick, exact: true }).click();
-  if (opts.token === "USDG") {
-    const approve = dialog.getByRole("button", { name: "Approve USDG" });
-    if (await approve.isVisible()) await approve.click();
-  }
-  await dialog.getByRole("button", { name: "Create duel" }).click();
-  await page.waitForURL(/\/duel\/\d+$/);
-  return BigInt(page.url().split("/").pop()!);
-}
-
-async function joinDuel(page: Page, id: bigint, opts: { token: "ETH" | "USDG"; pick?: string }) {
-  await page.goto(`/duel/${id}`);
-  await page.getByRole("button", { name: "Join duel" }).click();
-  const dialog = page.getByRole("dialog", { name: `Join duel #${id}` });
-  if (opts.pick) await dialog.getByRole("button", { name: opts.pick, exact: true }).click();
-  if (opts.token === "USDG") {
-    const approve = dialog.getByRole("button", { name: "Approve USDG" });
-    await expect(approve.or(dialog.getByRole("button", { name: /^Join for/ }))).toBeVisible();
-    if (await approve.isVisible()) await approve.click();
-  }
-  await dialog.getByRole("button", { name: /^Join for/ }).click();
-  await expect(dialog).toBeHidden();
-}
-
-async function expectStatus(page: Page, status: string | RegExp) {
-  await expect(page.getByTestId("duel-status")).toHaveAttribute("data-status", status);
-}
 
 /**
  * Poin 4: hasil tidak pernah tampil sebelum ada di chain. Ambil sampel halaman berulang kali;
@@ -160,12 +123,22 @@ test("Suit: commit di browser, reveal, lalu klaim", async ({ browser }) => {
   await alice.screenshot({ path: `${SHOTS}/05-suit-reveal-banner.png`, fullPage: true });
   await expect(bob.getByTestId("suit")).toHaveAttribute("data-phase", "waiting");
 
+  // Simulasikan indexer yang tertinggal: mulai sekarang alice terus menerima daftar pending-reveals lama.
+  let stale: string | undefined;
+  await alice.route("**/players/*/pending-reveals*", async (route) => {
+    if (!stale) stale = await (await route.fetch()).text();
+    await route.fulfill({ status: 200, contentType: "application/json", body: stale });
+  });
+
   await banner.getByRole("link", { name: "Reveal now" }).click();
   await alice.waitForURL(`**/duel/${id}`);
   await alice.getByRole("button", { name: "Reveal my move" }).click();
   await expectStatus(alice, "Settled");
-  // Duel ini hilang dari banner (duel lain dari run sebelumnya boleh masih ada).
-  await expect(alice.getByTestId("reveal-banner").getByText(new RegExp(`Suit #${id}$`))).toHaveCount(0);
+  // Duel ini hilang dari banner karena status di chain sudah final, walaupun indexer belum mengejar.
+  // (Duel lain dari run sebelumnya boleh masih ada.)
+  expect(stale).toContain(`"id":"${id}"`);
+  await expect(alice.getByTestId("reveal-banner").getByText(new RegExp(`Suit #${id}$`))).toHaveCount(0, { timeout: 5_000 });
+  await alice.unroute("**/players/*/pending-reveals*");
 
   const chain = await getDuel(id);
   expect(chain.winner.toLowerCase()).toBe(BOB.toLowerCase()); // Paper > Rock

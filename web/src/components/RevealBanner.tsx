@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 
 import { useNow } from "@/hooks/useArena";
+import { useAwaitingReveal } from "@/hooks/useAwaitingReveal";
 import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { formatDuration } from "@/lib/format";
-import { usePendingReveals } from "@/lib/indexer";
 
 /**
  * "You need to reveal" (docs/spec.md 5.3 langkah 6): setiap kali aplikasi dibuka, cek duel Suit milik
@@ -14,11 +14,11 @@ import { usePendingReveals } from "@/lib/indexer";
  */
 export function RevealBanner() {
   const { address } = useAccount();
-  const { data } = usePendingReveals(address);
+  const data = useAwaitingReveal(address);
   const { find } = useSuitSecrets();
   const now = useNow();
 
-  const pending = (data ?? []).filter((d) => now === undefined || Number(d.deadline) >= now);
+  const pending = data.filter((d) => now === undefined || Number(d.deadline) >= now);
   if (!address || pending.length === 0) return null;
 
   return (

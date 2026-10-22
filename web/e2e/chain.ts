@@ -66,3 +66,24 @@ export async function freshAccount(): Promise<Address> {
   await test.setBalance({ address, value: parseEther("10") });
   return address;
 }
+
+/** Majukan waktu Anvil (mis. melewati jendela reveal) dan tambang satu blok. */
+export async function warp(seconds: number) {
+  const test = createTestClient({ chain, mode: "anvil", transport: http(d.rpcUrl) });
+  await test.increaseTime({ seconds });
+  await test.mine({ blocks: 1 });
+}
+
+export async function arenaRead<T>(functionName: string, args: readonly unknown[] = []): Promise<T> {
+  return client.readContract({ address: d.contracts.arena, abi: duelArenaAbi, functionName, args } as never) as Promise<T>;
+}
+
+export async function balanceOf(account: Address, token: Address | "ETH"): Promise<bigint> {
+  if (token === "ETH") return client.getBalance({ address: account });
+  return client.readContract({
+    address: token,
+    abi: [{ type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }],
+    functionName: "balanceOf",
+    args: [account],
+  });
+}
