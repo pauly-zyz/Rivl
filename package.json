@@ -14,6 +14,8 @@
     "indexer": "pnpm --filter @rivl/indexer dev",
     "test:contracts": "pnpm --filter @rivl/contracts test",
     "abi": "pnpm --filter @rivl/contracts abi",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "test:web": "pnpm --filter @rivl/web test",
+    "e2e": "pnpm --filter @rivl/web e2e"
   }
 }

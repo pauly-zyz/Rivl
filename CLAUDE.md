@@ -17,6 +17,7 @@ Jika ada yang bertentangan dengan spec, tanyakan dulu sebelum mengubah apa pun.
 ```
 contracts/   Foundry. ABI hasil ekspor di contracts/abi/ (@rivl/contracts/abi)
 indexer/     Ponder 0.18. API: indexer/src/api/index.ts
+web/         Next.js 16 + wagmi 2 + RainbowKit. Baca web/AGENTS.md (Next 16 berbeda dari versi lama).
 scripts/     dev-chain, auto-fulfill, demo, dev (orkestrator)
 docs/        spec.md
 ```
@@ -26,11 +27,20 @@ docs/        spec.md
 ```bash
 git submodule update --init --recursive   # library Foundry
 pnpm install
-pnpm dev              # Anvil + deploy + auto-fulfill + indexer (http://localhost:42069)
+pnpm dev              # Anvil + deploy + auto-fulfill + indexer (:42069) + web (:3000)
 pnpm demo             # (saat pnpm dev jalan) mainkan duel contoh + cocokkan indexer dengan chain
 pnpm test:contracts   # forge test
+pnpm test:web         # Vitest (termasuk test vector commit Suit)
+pnpm e2e              # Playwright di chain lokal (menjalankan pnpm dev jika belum jalan)
 pnpm abi              # setelah mengubah contract: build + ekspor ABI
 pnpm typecheck
 ```
 
 Butuh Node >= 22.12, pnpm 10, dan Foundry (`anvil`, `forge`).
+
+## Web
+
+- Status & hasil duel selalu dibaca dari contract (`getDuel`); indexer untuk daftar, feed, riwayat, tx hash.
+- Jangan pernah menampilkan hasil sebelum status Settled/Draw di chain (lihat `web/src/components/arena.tsx`).
+- Rahasia Suit: `web/src/lib/suit.ts`. Disimpan di localStorage SEBELUM tx; dicari lewat commit.
+- Teks UI dalam bahasa Inggris.

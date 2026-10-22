@@ -1,4 +1,4 @@
-const COLORS = { chain: 36, fulfill: 35, indexer: 33, demo: 32, dev: 34 } as const;
+const COLORS = { chain: 36, fulfill: 35, indexer: 33, web: 94, demo: 32, dev: 34 } as const;
 export type LogTag = keyof typeof COLORS;
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;

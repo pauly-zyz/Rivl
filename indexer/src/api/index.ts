@@ -4,6 +4,7 @@
  *
  *   GET /duels/open                        duel terbuka & belum kedaluwarsa (filter + urutan)
  *   GET /duels/:id                         detail satu duel
+ *   GET /duels?ids=1,2,3                   beberapa duel (selalu 200, yang belum terindeks dilewati)
  *   GET /players/:address/duels            riwayat duel satu alamat
  *   GET /players/:address/stats            menang / kalah / seri / volume
  *   GET /players/:address/pending-reveals  duel Suit milik alamat yang menunggu reveal
@@ -112,6 +113,21 @@ app.get("/duels/open", async (c) => {
     .limit(limit)
     .offset(offset);
   return json(c, { now, limit, offset, items });
+});
+
+/**
+ * Beberapa duel sekaligus: /duels?ids=1,2,3 (maks. 100). Selalu 200; duel yang belum terindeks
+ * (mis. baru saja dibuat) tidak muncul di `items`. Dipakai web supaya tidak ada 404 saat indexer tertinggal.
+ */
+app.get("/duels", async (c) => {
+  const raw = c.req.query("ids") ?? "";
+  const ids = raw
+    .split(",")
+    .filter(Boolean)
+    .map((s) => parseUint(s.trim(), "ids")!);
+  if (ids.length === 0 || ids.length > 100) throw new BadRequest("ids harus berisi 1–100 id, dipisah koma");
+  const items = await db.select().from(duel).where(inArray(duel.id, ids));
+  return json(c, { items });
 });
 
 app.get("/duels/:id", async (c) => {
