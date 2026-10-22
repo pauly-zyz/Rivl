@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/*
+ * Rivl — gelap, tegas, kompetitif (docs/spec.md 5.5).
+ * Konsep: arena tinju. Sudut merah = pembuat duel, sudut biru = penantang.
+ * Hanya dua warna aksen. Tanpa emas, tanpa lampu kedip, tanpa hijau merek pihak lain.
+ */
+@theme {
+  --color-bg: #08090b;
+  --color-surface: #101216;
+  --color-raised: #171a20;
+  --color-line: #23272f;
+  --color-line-strong: #363b45;
+  --color-ink: #eef0f4;
+  --color-muted: #8d95a3;
+  --color-faint: #5a616e;
+  --color-red: #e5484d;
+  --color-red-bright: #ff6369;
+  --color-red-deep: #2c1214;
+  --color-blue: #4c7dff;
+  --color-blue-bright: #7096ff;
+  --color-blue-deep: #111b33;
+  --color-steel: #c9ced8;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-archivo), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --animate-coin-spin: coin-spin 0.9s linear infinite;
+  --animate-shake: shake 0.5s ease-in-out infinite;
+  --animate-bob: bob 0.7s ease-in-out infinite;
+  --animate-pop: pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-rise: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-ticker: ticker 60s linear infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Keyframes (gerak halus; tidak ada yang berkedip)                    */
+/* ------------------------------------------------------------------ */
+
+@keyframes coin-spin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(360deg); }
+}
+@keyframes coin-land-heads {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(1440deg); }
+}
+@keyframes coin-land-tails {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(1620deg); }
+}
+@keyframes shake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  25% { transform: translate(-3px, 2px) rotate(-8deg); }
+  75% { transform: translate(3px, -2px) rotate(8deg); }
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dasar                                                               */
+/* ------------------------------------------------------------------ */
+
+html {
+  color-scheme: dark;
+  background: var(--color-bg);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-red) 45%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-blue-bright);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Judul expanded: Archivo lebar 125%, berat hitam. */
+.font-display {
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  letter-spacing: -0.02em;
+}
+.font-display-condensed {
+  font-family: var(--font-display);
+  font-stretch: 100%;
+}
+
+/* Label kecil kapital ala papan skor. */
+.eyebrow {
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-weight: 700;
+  font-size: 0.6875rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ */
+/* Latar arena                                                         */
+/* ------------------------------------------------------------------ */
+
+/* Sorotan merah kiri + biru kanan dan lantai bergaris tipis. Statis. */
+.arena-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 36rem at -10% -10%, color-mix(in oklab, var(--color-red) 16%, transparent), transparent 60%),
+    radial-gradient(60rem 36rem at 110% -10%, color-mix(in oklab, var(--color-blue) 16%, transparent), transparent 60%),
+    var(--color-bg);
+}
+.arena-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(to bottom, black, transparent 70%);
+}
+
+/* Panggung dengan sorotan dari kedua sudut. */
+.stage {
+  background:
+    radial-gradient(70% 90% at 0% 50%, color-mix(in oklab, var(--color-red) 14%, transparent), transparent 70%),
+    radial-gradient(70% 90% at 100% 50%, color-mix(in oklab, var(--color-blue) 14%, transparent), transparent 70%),
+    linear-gradient(to bottom, var(--color-surface), var(--color-bg));
+}
+
+/* Garis atas kartu: gradasi merah → biru. */
+.edge-gradient {
+  position: relative;
+}
+.edge-gradient::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-red) 20%, var(--color-blue) 80%, transparent);
+  opacity: 0.7;
+}
+
+/* Kartu dengan sorotan halus saat hover. */
+.card-lift {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-line-strong);
+  box-shadow: 0 18px 40px -24px rgb(0 0 0 / 0.9);
+}
+
+/* Garis diagonal tipis untuk kartu Coming Soon / slot kosong. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 0.03) 0 2px,
+    transparent 2px 10px
+  );
+}
+
+/* Pita hasil berjalan (berhenti saat di-hover, mati jika reduced motion). */
+.ticker-track {
+  animation: var(--animate-ticker);
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+/* ------------------------------------------------------------------ */
+/* Koin baja 3D                                                        */
+/* ------------------------------------------------------------------ */
+
+.coin {
+  transform-style: preserve-3d;
+}
+.coin-face {
+  backface-visibility: hidden;
+  background:
+    radial-gradient(circle at 32% 28%, rgb(255 255 255 / 0.35), transparent 42%),
+    radial-gradient(circle at 50% 50%, #2a2f38 0 58%, #1a1e25 59% 100%);
+  box-shadow:
+    inset 0 0 0 6px #3a404b,
+    inset 0 0 0 9px #14171c,
+    0 20px 50px -20px rgb(0 0 0 / 0.9);
+}
+.coin-face::after {
+  /* Tepi bergerigi */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: repeating-conic-gradient(from 0deg, rgb(255 255 255 / 0.10) 0 2deg, transparent 2deg 6deg);
+  mask: radial-gradient(circle, transparent 0 66%, black 67% 72%, transparent 73%);
+}
+.coin-face-back {
+  transform: rotateY(180deg);
+}
+.coin-land-heads {
+  animation: coin-land-heads 1.6s cubic-bezier(0.15, 0.7, 0.2, 1) both;
+}
+.coin-land-tails {
+  animation: coin-land-tails 1.6s cubic-bezier(0.15, 0.7, 0.2, 1) both;
+}

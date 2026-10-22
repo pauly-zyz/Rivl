@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+
+# Hasil deploy chain lokal dan log (dibuat ulang oleh `pnpm dev`)
+deployments/
+.dev/
+
+# Ponder
+indexer/.ponder/
+indexer/generated/

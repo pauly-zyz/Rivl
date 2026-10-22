@@ -1,0 +1,23 @@
+{
+  "name": "@rivl/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx dev.ts",
+    "dev:chain": "tsx dev-chain/index.ts",
+    "auto-fulfill": "tsx auto-fulfill/index.ts",
+    "demo": "tsx demo/index.ts",
+    "typecheck": "tsc --noEmit",
+    "deploy:env": "tsx deploy-env/index.ts"
+  },
+  "dependencies": {
+    "@rivl/contracts": "workspace:*",
+    "viem": "2.57.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

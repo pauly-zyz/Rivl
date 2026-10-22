@@ -1,0 +1,13 @@
+packages:
+  - contracts
+  - indexer
+  - scripts
+  - web
+
+# pnpm 10 hanya menjalankan install script dependensi yang diizinkan di sini.
+# bufferutil, keccak, utf-8-validate: addon native opsional dengan fallback JS, tidak perlu di-build.
+allowBuilds:
+  esbuild: true
+  bufferutil: false
+  keccak: false
+  utf-8-validate: false
