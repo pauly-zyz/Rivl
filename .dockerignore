@@ -1,0 +1,18 @@
+# Konteks build Docker (deploy/railway/Dockerfile). Jangan kirim rahasia, build lokal, atau dependensi.
+.git
+**/node_modules
+.env
+.env.*
+!.env.example
+contracts/.env
+contracts/lib
+contracts/out
+contracts/cache
+contracts/broadcast
+indexer/.ponder
+indexer/generated
+web/.next
+web/test-results
+web/e2e-screens
+deployments
+.dev

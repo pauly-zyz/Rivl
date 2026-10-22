@@ -118,9 +118,15 @@ peringatan ini secara otomatis.
    (ETH 0,0005–0,5; USDG 1–1.000 per pemain). Pola URL verifikasi mengikuti contoh resmi untuk mainnet
    ([Deploy a Contract](https://docs.robinhood.com/chain/deploy-smart-contracts/)); sesuaikan jika explorer testnet berbeda.
 
-5. **Catat hasilnya** dari output dan `contracts/broadcast/Deploy.s.sol/46630/run-latest.json`:
-   alamat `DuelArena`, alamat `DevRandomnessProvider`, dan **nomor blok** transaksi deploy DuelArena
-   (untuk `ARENA_START_BLOCK`).
+5. **Ambil hasilnya** sebagai env siap salin:
+
+   ```bash
+   pnpm deploy:env 46630
+   ```
+
+   Script membaca `contracts/broadcast/Deploy.s.sol/46630/run-latest.json`, menulis `deployments/testnet.json`, dan
+   mencetak env untuk Railway (indexer, auto-fulfill) dan Vercel (web): alamat `DuelArena`,
+   `DevRandomnessProvider`, USDG, dan **nomor blok** deploy (`ARENA_START_BLOCK`). Tidak membaca private key.
 
 6. **Jika `OWNER` diisi**, owner baru (multisig) harus memanggil `acceptOwnership()` di DuelArena. Sampai itu terjadi,
    deployer tetap owner.
@@ -175,6 +181,22 @@ pnpm --filter @rivl/indexer start -- --port 42069
 - Indexer harus bisa diakses dari browser pengguna (web memanggilnya langsung). Taruh di belakang HTTPS.
 - Untuk mainnet: `INDEXER_CHAIN=mainnet`, `ROBINHOOD_RPC`, `ROBINHOOD_CHAIN_ID=4663`.
 
+### Hosting di Railway (indexer + auto-fulfill)
+
+Konfigurasi ada di `deploy/railway/` (satu Dockerfile, dua file config). Di satu project Railway:
+
+1. **Postgres**: *New → Database → PostgreSQL*.
+2. **Service `indexer`**: *New → GitHub Repo* → repo ini. Di *Settings*: *Config-as-code path* =
+   `deploy/railway/indexer.json` (Root Directory biarkan kosong). Isi *Variables* dari blok "Railway: service indexer"
+   di output `pnpm deploy:env`. Lalu *Networking → Generate Domain*; URL ini = `NEXT_PUBLIC_INDEXER_URL`.
+   Healthcheck memakai `/health`; `/ready` baru 200 setelah indexer mengejar chain.
+3. **Service `auto-fulfill`** (hanya testnet dengan DevRandomnessProvider): repo yang sama, config path
+   `deploy/railway/auto-fulfill.json`, variables dari blok "Railway: service auto-fulfill". `PRIVATE_KEY` diisi
+   sebagai variabel di Railway (disimpan terenkripsi), **jangan** di file. Service ini tidak perlu domain publik.
+
+Setiap kali indexer di-deploy ulang dengan schema atau alamat berbeda, ganti `DATABASE_SCHEMA` (Ponder menolak
+memakai schema milik deploy lain).
+
 ---
 
 ## 4. Deploy web
@@ -200,8 +222,16 @@ Web adalah aplikasi Next.js di `web/` dalam pnpm workspace (ABI diimpor dari `@r
 `NEXT_PUBLIC_*` ditanam saat build, jadi **build ulang** setiap kali nilainya berubah. `BLOCKED_COUNTRIES` dan
 `GEO_COUNTRY_HEADER` dibaca saat request.
 
-**Vercel:** impor repo, set *Root Directory* ke `web` (Vercel mendeteksi pnpm workspace dan meng-install dari root),
-isi environment di atas, deploy. Header negara `x-vercel-ip-country` dipasang otomatis oleh Vercel.
+**Vercel:**
+
+1. *Add New → Project* → impor repo ini.
+2. *Root Directory* = `web`. Framework terdeteksi sebagai Next.js; install dan build command biarkan default
+   (Vercel mendeteksi pnpm workspace dan meng-install dari root).
+3. *Environment Variables*: salin blok "Vercel" dari output `pnpm deploy:env`, termasuk
+   `ENABLE_EXPERIMENTAL_COREPACK=1` supaya Vercel memakai pnpm versi `packageManager` (10.28).
+4. Deploy. Header negara `x-vercel-ip-country` dipasang otomatis oleh Vercel.
+
+Urutan yang paling mudah: contract → indexer di Railway (dapat URL) → web di Vercel.
 
 **Server sendiri:**
 

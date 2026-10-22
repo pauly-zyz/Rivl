@@ -16,6 +16,7 @@
     "abi": "pnpm --filter @rivl/contracts abi",
     "typecheck": "pnpm -r typecheck",
     "test:web": "pnpm --filter @rivl/web test",
-    "e2e": "pnpm --filter @rivl/web e2e"
+    "e2e": "pnpm --filter @rivl/web e2e",
+    "deploy:env": "pnpm --filter @rivl/scripts deploy:env"
   }
 }
