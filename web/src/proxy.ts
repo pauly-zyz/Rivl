@@ -4,7 +4,7 @@ import { countryFromHeaders, isBlocked, parseBlockedCountries } from "@/lib/geo"
 
 /**
  * Geoblock (docs/spec.md 5.4). Next.js 16 menamai middleware sebagai "proxy" (fungsinya sama).
- * Pengunjung dari negara di BLOCKED_COUNTRIES (default ID,US) hanya melihat "Not available in your region".
+ * Default semua negara boleh akses. Pengunjung dari negara di BLOCKED_COUNTRIES (jika diisi) hanya melihat "Not available in your region".
  * Env dibaca saat request, jadi daftar negara bisa diubah tanpa build ulang.
  */
 export function proxy(request: NextRequest) {

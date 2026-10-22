@@ -216,7 +216,7 @@ Web adalah aplikasi Next.js di `web/` dalam pnpm workspace (ABI diimpor dari `@r
 | `NEXT_PUBLIC_INDEXER_URL` | URL publik indexer |
 | `NEXT_PUBLIC_X_URL` | akun X Rivl (tombol Notify me) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | opsional, untuk MetaMask mobile/WalletConnect |
-| `BLOCKED_COUNTRIES` | `ID,US` (sesuaikan setelah konsultasi hukum) |
+| `BLOCKED_COUNTRIES` | kosong = semua negara boleh akses (default); isi mis. `XX,YY` hanya jika perlu memblokir |
 | `GEO_COUNTRY_HEADER` | `x-vercel-ip-country` di Vercel, `cf-ipcountry` di Cloudflare |
 
 `NEXT_PUBLIC_*` ditanam saat build, jadi **build ulang** setiap kali nilainya berubah. `BLOCKED_COUNTRIES` dan
@@ -245,7 +245,7 @@ Taruh di belakang CDN yang memasang header negara, dan isi `GEO_COUNTRY_HEADER` 
 Tanpa itu, geoblock bisa dilewati dengan header palsu.
 
 Setelah deploy, cek: halaman utama memuat duel dari indexer, `/fair` menunjukkan sumber randomness yang benar, dan
-akses dengan header negara yang diblokir membalas 451 "Not available in your region".
+jika `BLOCKED_COUNTRIES` diisi, akses dengan header negara yang diblokir membalas 451 "Not available in your region".
 
 ---
 

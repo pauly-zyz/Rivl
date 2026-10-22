@@ -58,8 +58,22 @@ test("age gate: wajib 18+ dan setuju Terms; Terms tetap bisa dibaca", async ({ b
   await expect(minor.getByTestId("age-gate")).toContainText("only for adults aged 18 and over");
 });
 
+test("geoblock default: semua negara boleh akses", async ({ browser }) => {
+  test.skip(parseBlockedCountries(process.env.BLOCKED_COUNTRIES).size > 0, "BLOCKED_COUNTRIES diisi");
+  for (const [header, country] of [
+    ["cf-ipcountry", "ID"],
+    ["x-vercel-ip-country", "US"],
+  ] as const) {
+    const page = await playerPage(browser, ALICE, undefined, { headers: { [header]: country } });
+    const res = await page.goto("/");
+    expect(res?.status(), `/ dari ${country}`).toBe(200);
+    await expect(page.getByRole("heading", { name: /Find your rival/ })).toBeVisible();
+  }
+});
+
 test("geoblock: negara di BLOCKED_COUNTRIES melihat 'Not available in your region'", async ({ browser }) => {
   const blocked = [...parseBlockedCountries(process.env.BLOCKED_COUNTRIES)];
+  test.skip(blocked.length === 0, "BLOCKED_COUNTRIES kosong: tidak ada negara yang diblokir");
   const allowed = ["DE", "GB", "SG", "BR", "JP"].find((c) => !blocked.includes(c))!;
 
   for (const [header, country] of [

@@ -13,14 +13,10 @@ export const DEFAULT_COUNTRY_HEADERS = [
   "x-appengine-country",
 ] as const;
 
-/** Default spec, akan disesuaikan setelah konsultasi hukum. */
-export const DEFAULT_BLOCKED_COUNTRIES = "ID,US";
-
-/** "id, us" → {"ID","US"}. Kosong/tidak di-set → default spec. */
+/** "id, us" → {"ID","US"}. Kosong/tidak di-set → tidak ada negara yang diblokir (default spec 5.4). */
 export function parseBlockedCountries(value: string | undefined): Set<string> {
-  const raw = value?.trim() ? value : DEFAULT_BLOCKED_COUNTRIES;
   return new Set(
-    raw
+    (value ?? "")
       .split(",")
       .map((c) => c.trim().toUpperCase())
       .filter((c) => /^[A-Z]{2}$/.test(c)),

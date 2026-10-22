@@ -103,4 +103,4 @@ Nilai-nilai ini sudah dimasukkan ke `.env.example` dan `contracts/.env.example` 
 ## Pertanyaan hukum (bagian 8)
 
 Belum dijawab; di luar cakupan teknis. Placeholder di `/terms` dan `/responsible-gaming` masih bertuliskan
-"TO BE PROVIDED BY LEGAL COUNSEL", dan `BLOCKED_COUNTRIES` masih default spec (`ID,US`).
+"TO BE PROVIDED BY LEGAL COUNSEL", dan `BLOCKED_COUNTRIES` default kosong (semua negara boleh akses, keputusan pemilik).

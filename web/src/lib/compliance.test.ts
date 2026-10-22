@@ -17,9 +17,10 @@ import {
 import type { KeyValueStore } from "./suit";
 
 describe("geoblock", () => {
-  it("default BLOCKED_COUNTRIES = ID,US", () => {
-    expect([...parseBlockedCountries(undefined)]).toEqual(["ID", "US"]);
-    expect([...parseBlockedCountries("  ")]).toEqual(["ID", "US"]);
+  it("default: tidak ada negara yang diblokir", () => {
+    expect([...parseBlockedCountries(undefined)]).toEqual([]);
+    expect([...parseBlockedCountries("  ")]).toEqual([]);
+    for (const c of ["ID", "US", "DE"]) expect(isBlocked(c, parseBlockedCountries(undefined))).toBe(false);
   });
 
   it("parse daftar dari env, abaikan entri tidak valid", () => {

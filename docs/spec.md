@@ -14,7 +14,7 @@ Rivl adalah platform game **PvP 1 lawan 1** di **Robinhood Chain**. Pemain menan
 
 - **Tagline:** Find your rival. Take the pot.
 - **Model bisnis:** Rivl mengambil fee 2,5% dari setiap pot. Rivl tidak pernah menjadi lawan pemain, jadi tidak butuh bankroll dan tidak menanggung risiko kalah.
-- **Bahasa UI:** Inggris. **Target pengguna:** global, kecuali negara yang di-geoblock.
+- **Bahasa UI:** Inggris. **Target pengguna:** global, terbuka untuk semua negara.
 
 ### Tujuan versi 1
 
@@ -285,7 +285,7 @@ Jika salt hilang, pemain tidak bisa reveal dan kalah karena timeout. Karena itu:
 ### 5.4 Kepatuhan
 
 - **Age gate** saat kunjungan pertama: konfirmasi 18+ dan setuju Terms.
-- **Geoblock:** middleware Next.js membaca header negara dari hosting/CDN dan menampilkan halaman "Not available in your region" untuk negara di `BLOCKED_COUNTRIES` (default `ID,US`, akan disesuaikan setelah konsultasi hukum).
+- **Geoblock:** middleware Next.js membaca header negara dari hosting/CDN dan menampilkan halaman "Not available in your region" untuk negara di `BLOCKED_COUNTRIES`. Default kosong: semua negara boleh akses. Daftar bisa diisi lewat env kapan saja tanpa ubah kode.
 - Footer berisi peringatan risiko dan link ke Terms dan Responsible gaming.
 
 ### 5.5 Gaya visual
@@ -330,7 +330,7 @@ Satu perintah `pnpm dev` menjalankan chain lokal, auto-fulfill, indexer, dan web
 | `NEXT_PUBLIC_ARENA_ADDRESS`, `NEXT_PUBLIC_USDG_ADDRESS` | web | |
 | `NEXT_PUBLIC_INDEXER_URL` | web | |
 | `NEXT_PUBLIC_X_URL` | web | Untuk tombol Notify me |
-| `BLOCKED_COUNTRIES` | web | Kode negara dipisah koma |
+| `BLOCKED_COUNTRIES` | web | Kode negara dipisah koma (kosong = tidak ada yang diblokir) |
 
 **Jangan mengarang** chain ID, RPC, alamat explorer, alamat USDG, atau parameter VRF. Ambil dari dokumentasi resmi dan sebutkan sumbernya, atau tanyakan.
 

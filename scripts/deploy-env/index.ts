@@ -140,7 +140,7 @@ function main() {
     "NEXT_PUBLIC_INDEXER_URL=<URL publik service indexer di Railway, mis. https://rivl-indexer.up.railway.app>",
     "NEXT_PUBLIC_X_URL=",
     "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=",
-    "BLOCKED_COUNTRIES=ID,US",
+    "BLOCKED_COUNTRIES=",
     "GEO_COUNTRY_HEADER=x-vercel-ip-country",
     "ENABLE_EXPERIMENTAL_COREPACK=1",
   ]);
