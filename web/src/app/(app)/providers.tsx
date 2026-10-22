@@ -10,6 +10,17 @@ import { WagmiProvider } from "wagmi";
 import { appConfig, configResult } from "@/lib/config";
 import { createWagmiConfig } from "@/lib/wagmi";
 
+/** RainbowKit mengikuti identitas Rivl: aksen merah, font Inter, sudut membulat. */
+const rivlTheme = (() => {
+  const t = darkTheme({ accentColor: "#e5484d", borderRadius: "large", overlayBlur: "small" });
+  t.fonts.body = "var(--font-inter), ui-sans-serif, system-ui, sans-serif";
+  t.colors.modalBackground = "#101216";
+  t.colors.modalBorder = "#23272f";
+  t.colors.connectButtonBackground = "#171a20";
+  t.colors.connectButtonInnerBackground = "#101216";
+  return t;
+})();
+
 export function Providers({ children }: { children: ReactNode }) {
   if (!configResult.ok) return <ConfigMissing missing={configResult.missing} />;
   return <ConfiguredProviders>{children}</ConfiguredProviders>;
@@ -23,7 +34,7 @@ function ConfiguredProviders({ children }: { children: ReactNode }) {
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider
-          theme={darkTheme({ accentColor: "#e5484d", borderRadius: "medium", overlayBlur: "small" })}
+          theme={rivlTheme}
           modalSize="compact"
           appInfo={{ appName: "Rivl" }}
         >
@@ -37,7 +48,7 @@ function ConfiguredProviders({ children }: { children: ReactNode }) {
 function ConfigMissing({ missing }: { missing: string[] }) {
   return (
     <main className="mx-auto max-w-lg px-4 py-16">
-      <h1 className="text-2xl font-black">Rivl is not configured</h1>
+      <h1 className="font-display text-2xl font-black">Rivl is not configured</h1>
       <p className="mt-3 text-muted">Set these variables in the root .env file (see .env.example), then restart:</p>
       <ul className="mt-4 space-y-1 font-mono text-sm text-red">
         {missing.map((m) => (

@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { CoinFlip, DiceDuel, SuitHands } from "@/components/arena";
+import { Avatar } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
 import { JoinDuelModal } from "@/components/JoinDuelModal";
 import { Badge, BreakNotice, Button, Card, Row, SectionTitle, TxLink, TxNotice } from "@/components/ui";
@@ -47,7 +48,7 @@ export default function DuelPage() {
   if (id === undefined || (!isLoading && (!duel || duel.status === 0))) {
     return (
       <div className="py-16 text-center">
-        <h1 className="text-2xl font-black">Duel not found</h1>
+        <h1 className="font-display text-2xl font-black">Duel not found</h1>
         <Link href="/" className="mt-4 inline-block text-blue hover:underline">
           Back to the lobby
         </Link>
@@ -72,29 +73,60 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
   const { fee, payout } = potBreakdown(duel.amount, duel.feeBpsAtCreate);
   const fmt = (v: bigint) => (token ? `${formatAmount(v, token.decimals)} ${token.symbol}` : "…");
 
+  const finished = status === "Settled" || status === "Draw";
+  const winnerSide =
+    status === "Settled" ? (sameAddress(duel.winner, duel.creator) ? "creator" : "joiner") : undefined;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <GameIcon game={game} className="h-7 w-7 text-red" />
-        <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-          {game === "Dice" ? "Dice Duel" : game} <span className="text-faint">#{id.toString()}</span>
-        </h1>
-        <span data-testid="duel-status" data-status={status}>
-          <Badge tone={status === "Settled" ? "strong" : status === "Open" ? "blue" : "neutral"}>{STATUS_LABEL[status]}</Badge>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 animate-rise">
+        <span className="grid h-11 w-11 place-items-center rounded-xl border border-red/30 bg-red-deep text-red-bright">
+          <GameIcon game={game} className="h-6 w-6" />
         </span>
-        <span className="tabular ml-auto text-2xl font-black">{fmt(duel.amount)}</span>
+        <div>
+          <h1 className="font-display text-2xl font-black sm:text-3xl">
+            {game === "Dice" ? "Dice Duel" : game} <span className="text-faint">#{id.toString()}</span>
+          </h1>
+          <span data-testid="duel-status" data-status={status} className="mt-1 inline-flex">
+            <Badge tone={status === "Settled" ? "strong" : status === "Open" ? "blue" : "neutral"}>
+              <span
+                aria-hidden
+                className={`mr-1.5 h-1.5 w-1.5 rounded-full ${finished ? "bg-ink" : status === "Open" ? "bg-blue" : "bg-red"}`}
+              />
+              {STATUS_LABEL[status]}
+            </Badge>
+          </span>
+        </div>
+        <div className="ml-auto text-right">
+          <div className="eyebrow text-[10px] text-faint">Stake each</div>
+          <div className="tabular font-display text-2xl font-black sm:text-3xl">{fmt(duel.amount)}</div>
+        </div>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="grid grid-cols-2 border-b border-line text-sm">
-          <Corner side="creator" label="Creator" who={duel.creator} you={isCreator} choice={choiceLabel(game, duel, "creator")} />
-          <Corner side="joiner" label="Rival" who={isZero(duel.joiner) ? undefined : duel.joiner} you={isJoiner} choice={choiceLabel(game, duel, "joiner")} />
+      <div className="stage edge-gradient overflow-hidden rounded-3xl border border-line animate-rise [animation-delay:80ms]">
+        <div className="grid grid-cols-2">
+          <Corner
+            side="creator"
+            label="Red corner"
+            who={duel.creator}
+            you={isCreator}
+            choice={choiceLabel(game, duel, "creator")}
+            outcome={winnerSide === undefined ? undefined : winnerSide === "creator" ? "win" : "lose"}
+          />
+          <Corner
+            side="joiner"
+            label="Blue corner"
+            who={isZero(duel.joiner) ? undefined : duel.joiner}
+            you={isJoiner}
+            choice={choiceLabel(game, duel, "joiner")}
+            outcome={winnerSide === undefined ? undefined : winnerSide === "joiner" ? "win" : "lose"}
+          />
         </div>
-        <div className="px-4 py-10">
+        <div className="relative px-4 py-12 sm:py-14">
           <ArenaAnimation game={game} status={status} duel={duel} />
         </div>
         <ResultBanner status={status} duel={duel} address={address} payout={fmt(payout)} />
-      </Card>
+      </div>
 
       <Actions id={id} duel={duel} status={status} game={game} token={token} now={now} isCreator={isCreator} isJoiner={isJoiner} />
 
@@ -136,17 +168,65 @@ function choiceLabel(game: Game, d: ChainDuel, side: "creator" | "joiner"): stri
   return undefined;
 }
 
-function Corner({ side, label, who, you, choice }: { side: "creator" | "joiner"; label: string; who?: string; you: boolean; choice?: string }) {
-  const color = side === "creator" ? "border-red text-red" : "border-blue text-blue";
+function Corner({
+  side,
+  label,
+  who,
+  you,
+  choice,
+  outcome,
+}: {
+  side: "creator" | "joiner";
+  label: string;
+  who?: string;
+  you: boolean;
+  choice?: string;
+  outcome?: "win" | "lose";
+}) {
+  const red = side === "creator";
   const link = who ? explorerAddress(who) : undefined;
   return (
-    <div className={`border-t-4 p-4 ${color} ${side === "joiner" ? "text-right" : ""}`}>
-      <div className="text-[11px] font-bold uppercase tracking-[0.18em]">{label}</div>
-      <div className="mt-1 font-mono text-sm text-ink">
-        {who ? (link ? <a href={link} target="_blank" rel="noreferrer" className="hover:underline">{shortAddress(who)}</a> : shortAddress(who)) : "Waiting…"}
-        {you && <span className="ml-1.5 font-sans text-xs font-bold text-muted">(you)</span>}
+    <div
+      className={`relative flex flex-col gap-3 p-4 transition-opacity duration-700 sm:flex-row sm:items-center sm:p-5 ${
+        red ? "items-start" : "items-end text-right sm:flex-row-reverse"
+      } ${outcome === "lose" ? "opacity-45" : ""}`}
+    >
+      <div aria-hidden className={`absolute inset-x-0 top-0 h-1 ${red ? "bg-red" : "bg-blue"}`} />
+      <div className="relative">
+        <Avatar
+          address={who}
+          corner={red ? "red" : "blue"}
+          size={52}
+          className={outcome === "win" ? (red ? "shadow-[0_0_40px_-4px_var(--color-red)]" : "shadow-[0_0_40px_-4px_var(--color-blue)]") : ""}
+        />
       </div>
-      {choice && <div className="mt-1 text-xs font-semibold text-muted">{choice}</div>}
+      <div className="min-w-0">
+        <div className={`eyebrow whitespace-nowrap text-[10px] ${red ? "text-red" : "text-blue"}`}>{label}</div>
+        <div className="mt-1 truncate font-mono text-sm text-ink">
+          {who ? (
+            link ? (
+              <a href={link} target="_blank" rel="noreferrer" className="hover:underline">
+                {shortAddress(who)}
+              </a>
+            ) : (
+              shortAddress(who)
+            )
+          ) : (
+            "Open seat"
+          )}
+          {you && <span className="ml-1.5 font-sans text-xs font-bold text-muted">(you)</span>}
+        </div>
+        <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${red ? "" : "justify-end"}`}>
+          {choice && (
+            <span className="rounded-md bg-bg/60 px-1.5 py-0.5 text-[11px] font-semibold text-muted">{choice}</span>
+          )}
+          {outcome === "win" && (
+            <span className={`rounded-md px-1.5 py-0.5 font-display-condensed text-[10px] font-black uppercase tracking-[0.14em] text-white ${red ? "bg-red" : "bg-blue"}`}>
+              Winner
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -196,7 +276,10 @@ function ResultBanner({ status, duel, address, payout }: { status: Status; duel:
   else if (status === "Cancelled") text = <>Cancelled by the creator. Stake returned.</>;
   if (!text) return null;
   return (
-    <div data-testid="duel-result" className="border-t border-line bg-raised px-4 py-3 text-center font-semibold">
+    <div
+      data-testid="duel-result"
+      className="font-display-condensed border-t border-line/70 bg-bg/50 px-4 py-4 text-center text-lg font-bold animate-fade-in [&_b]:font-display [&_b]:font-black"
+    >
       {text}
     </div>
   );

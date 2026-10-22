@@ -20,7 +20,16 @@ import { isUserRejection } from "@/lib/errors";
 import { formatAmount, formatDuration, parseAmount } from "@/lib/format";
 import { computeCommit, MOVE_NAMES, MOVES, randomSalt, type Move } from "@/lib/suit";
 
-export function CreateDuelModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CreateDuelModal({
+  open,
+  onClose,
+  initialGame,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Game yang langsung terpilih saat modal dibuka (mis. dari kartu "Pick your game"). */
+  initialGame?: Game;
+}) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
@@ -46,7 +55,8 @@ export function CreateDuelModal({ open, onClose }: { open: boolean; onClose: () 
 
   useEffect(() => {
     if (!open) tx.reset();
-  }, [open, tx.reset]); // eslint-disable-line react-hooks/exhaustive-deps
+    else if (initialGame) setGame(initialGame);
+  }, [open, initialGame, tx.reset]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const token: TokenInfo | undefined = tokens.find((t) => t.address === tokenAddr) ?? tokens[0];
   const amount = token ? parseAmount(amountText, token.decimals) : undefined;

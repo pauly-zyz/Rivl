@@ -7,6 +7,7 @@ import { useRef, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
+import { Avatar } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
 import { Badge, BreakNotice, Button, Card, EmptyState, FieldError, SectionTitle, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
@@ -24,7 +25,7 @@ export default function MePage() {
   if (!address) {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
-        <h1 className="text-2xl font-black">My duels</h1>
+        <h1 className="font-display text-3xl font-black">My duels</h1>
         <p className="mt-3 text-muted">Connect your wallet to see your duels, claim winnings and back up your Suit moves.</p>
         <div className="mt-6 flex justify-center">
           <ConnectButton />
@@ -38,7 +39,13 @@ export default function MePage() {
 function MyDuels({ address }: { address: Address }) {
   return (
     <div className="space-y-8">
-      <h1 className="text-3xl font-black tracking-tight">My duels</h1>
+      <header className="flex items-center gap-4 animate-rise">
+        <Avatar address={address} corner="red" size={60} className="rounded-2xl" />
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-black sm:text-4xl">My duels</h1>
+          <p className="mt-1 truncate font-mono text-sm text-muted">{address}</p>
+        </div>
+      </header>
       <PendingReveals address={address} />
       <div className="grid gap-8 lg:grid-cols-2">
         <Claimable address={address} />
@@ -246,8 +253,8 @@ function Stats({ address }: { address: Address }) {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <Card className="p-4 text-center">
-      <div className="tabular text-3xl font-black">{value}</div>
-      <div className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-muted">{label}</div>
+      <div className="tabular font-display text-4xl font-black">{value}</div>
+      <div className="eyebrow mt-1 text-[10px] text-muted">{label}</div>
     </Card>
   );
 }

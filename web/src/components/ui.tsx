@@ -9,9 +9,11 @@ import { shortAddress } from "@/lib/format";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "blue";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-red text-white hover:bg-[#f05a5f] disabled:bg-red/40",
-  blue: "bg-blue text-white hover:bg-[#6390ff] disabled:bg-blue/40",
-  secondary: "bg-raised text-ink border border-line-strong hover:border-muted disabled:text-faint",
+  primary:
+    "bg-gradient-to-b from-red-bright to-red text-white shadow-[0_8px_24px_-10px_var(--color-red),inset_0_1px_0_rgb(255_255_255/0.25)] hover:brightness-110 hover:shadow-[0_10px_30px_-8px_var(--color-red),inset_0_1px_0_rgb(255_255_255/0.25)] disabled:from-red/40 disabled:to-red/40 disabled:shadow-none",
+  blue:
+    "bg-gradient-to-b from-blue-bright to-blue text-white shadow-[0_8px_24px_-10px_var(--color-blue),inset_0_1px_0_rgb(255_255_255/0.25)] hover:brightness-110 hover:shadow-[0_10px_30px_-8px_var(--color-blue),inset_0_1px_0_rgb(255_255_255/0.25)] disabled:from-blue/40 disabled:to-blue/40 disabled:shadow-none",
+  secondary: "bg-raised/80 text-ink border border-line-strong hover:border-muted hover:bg-raised disabled:text-faint",
   ghost: "text-muted hover:text-ink disabled:text-faint",
 };
 
@@ -23,12 +25,12 @@ export function Button({
   children,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md" | "lg"; loading?: boolean }) {
-  const sizes = { sm: "h-9 px-3 text-sm", md: "h-11 px-4 text-sm", lg: "h-12 px-5 text-base" };
+  const sizes = { sm: "h-9 px-3.5 text-sm", md: "h-11 px-5 text-sm", lg: "h-13 px-6 text-base" };
   return (
     <button
       {...props}
       disabled={props.disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg font-semibold tracking-wide transition-colors disabled:cursor-not-allowed ${sizes[size]} ${VARIANTS[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl font-display-condensed font-bold tracking-wide transition-all duration-150 active:translate-y-px disabled:cursor-not-allowed ${sizes[size]} ${VARIANTS[variant]} ${className}`}
     >
       {loading && <Spinner />}
       {children}
@@ -46,13 +48,17 @@ export function Spinner({ className = "h-4 w-4" }: { className?: string }) {
 }
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-line bg-surface ${className}`}>{children}</div>;
+  return <div className={`rounded-2xl border border-line bg-surface/90 backdrop-blur-sm ${className}`}>{children}</div>;
 }
 
+/** Judul bagian bergaya papan skor: garis merah kecil + label kapital. */
 export function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
   return (
-    <div className="mb-3 flex items-end justify-between gap-3">
-      <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-muted">{children}</h2>
+    <div className="mb-4 flex items-end justify-between gap-3">
+      <h2 className="eyebrow flex items-center gap-2.5 text-muted">
+        <span aria-hidden className="h-3 w-1 rounded-full bg-red" />
+        {children}
+      </h2>
       {aside}
     </div>
   );
@@ -66,7 +72,7 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
     strong: "border-ink/40 text-ink",
   };
   return (
-    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${tones[tone]}`}>
+    <span className={`inline-flex items-center rounded-md border px-2 py-0.5 font-display-condensed text-[10px] font-bold uppercase tracking-[0.14em] ${tones[tone]}`}>
       {children}
     </span>
   );
@@ -101,14 +107,14 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal aria-label={title}>
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
       <div
         ref={ref}
         tabIndex={-1}
-        className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 outline-none animate-fade-in sm:max-w-lg sm:rounded-2xl"
+        className="edge-gradient relative max-h-[92dvh] w-full overflow-y-auto rounded-t-3xl border border-line bg-surface p-5 shadow-[0_30px_80px_-20px_rgb(0_0_0/0.9)] outline-none animate-rise sm:max-w-lg sm:rounded-3xl sm:p-6"
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-extrabold tracking-tight">{title}</h2>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="font-display text-xl font-black">{title}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-muted hover:text-ink" aria-label="Close">
             <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M5 5l10 10M15 5L5 15" />
@@ -161,7 +167,7 @@ export function TxNotice({ state }: { state: TxState }) {
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">{children}</div>;
+  return <div className="hatch rounded-2xl border border-dashed border-line px-4 py-12 text-center text-sm text-muted">{children}</div>;
 }
 
 export function Row({ label, value, strong }: { label: string; value: ReactNode; strong?: boolean }) {

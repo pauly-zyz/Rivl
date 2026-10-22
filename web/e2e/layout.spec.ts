@@ -38,7 +38,7 @@ for (const vp of VIEWPORTS) {
       expect(pageErrors(page).slice(before), `error console di ${path}`).toEqual([]);
 
       const slug = path === "/" ? "lobby" : path.replace(/[/?=]+/g, "-").replace(/^-/, "");
-      await page.screenshot({ path: `e2e-screens/layout-${vp.name}-${slug}.png`, fullPage: true });
+      await page.screenshot({ path: `e2e-screens/layout-${vp.name}-${slug}.png`, fullPage: true, animations: "disabled" });
     }
   });
 }

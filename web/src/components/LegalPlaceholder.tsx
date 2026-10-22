@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export function LegalPlaceholder({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <article className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-3xl font-black tracking-tight">{title}</h1>
+      <h1 className="font-display text-3xl font-black sm:text-4xl">{title}</h1>
       <div
         className="rounded-xl border-2 border-dashed border-red bg-red-deep px-5 py-10 text-center"
         data-testid="legal-placeholder"

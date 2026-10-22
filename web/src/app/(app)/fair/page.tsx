@@ -19,7 +19,7 @@ export default function FairPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-10">
       <header>
-        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Provably fair</h1>
+        <h1 className="font-display text-3xl font-black sm:text-5xl">Provably fair</h1>
         <p className="mt-3 text-muted">
           Nobody — not your rival, not Rivl — can choose or see a result in advance. You don&apos;t have to trust us:
           every number below comes from the chain, and this page recomputes each result in your browser.

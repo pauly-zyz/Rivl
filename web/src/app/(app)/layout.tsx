@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import "../globals.css";
+import { fontVariables } from "../fonts";
 import { Providers } from "./providers";
 import { AgeGate } from "@/components/AgeGate";
 import { Footer } from "@/components/Footer";
@@ -15,15 +16,16 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0b0d",
+  themeColor: "#08090b",
   width: "device-width",
   initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={fontVariables}>
       <body className="flex min-h-dvh flex-col">
+        <div aria-hidden className="arena-backdrop" />
         <Providers>
           {configResult.ok && (
             <>
@@ -31,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <RevealBanner />
             </>
           )}
-          <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 pt-6 sm:px-6">{children}</main>
+          <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-20 pt-6 sm:px-6 sm:pt-8">{children}</main>
           {configResult.ok && <AgeGate />}
         </Providers>
         <Footer />

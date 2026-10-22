@@ -126,3 +126,19 @@ export function usePendingReveals(address: Address | undefined) {
     refetchInterval: LIVE,
   });
 }
+
+export type GlobalStats = {
+  totalDuels: number;
+  byToken: { token: Address; duels: number; matched: number; volume: string; fees: string }[];
+  byGame: Partial<Record<Game, number>>;
+  byStatus: Partial<Record<Status, number>>;
+};
+
+/** Statistik global untuk hero Lobby. */
+export function useGlobalStats() {
+  return useQuery({
+    queryKey: ["indexer", "stats"],
+    queryFn: () => fetchIndexer<GlobalStats>("/stats"),
+    refetchInterval: 10_000,
+  });
+}

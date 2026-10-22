@@ -29,7 +29,7 @@ export default function RulesPage() {
   return (
     <article className="mx-auto max-w-3xl space-y-10">
       <header>
-        <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Rules</h1>
+        <h1 className="font-display text-3xl font-black sm:text-5xl">Rules</h1>
         <p className="mt-3 text-muted">
           Every duel is one player against one player. Both stakes are locked in the smart contract, the result is
           decided on chain, and the winner takes the pot minus a {fee} fee. Rivl never plays against you.
