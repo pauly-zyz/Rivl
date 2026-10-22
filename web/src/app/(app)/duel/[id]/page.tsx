@@ -9,8 +9,9 @@ import { useAccount, useReadContract } from "wagmi";
 import { CoinFlip, DiceDuel, SuitHands } from "@/components/arena";
 import { GameIcon } from "@/components/icons";
 import { JoinDuelModal } from "@/components/JoinDuelModal";
-import { Badge, Button, Card, Row, SectionTitle, TxLink, TxNotice } from "@/components/ui";
+import { Badge, BreakNotice, Button, Card, Row, SectionTitle, TxLink, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
+import { useLimits } from "@/hooks/useLimits";
 import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { useTx } from "@/hooks/useTx";
 import { appConfig, explorerAddress } from "@/lib/config";
@@ -109,6 +110,11 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
           )}
           {game === "Suit" && <Row label="Commit" value={<span className="break-all font-mono text-xs">{duel.commit}</span>} />}
         </dl>
+        {(status === "Settled" || status === "Draw") && (
+          <Link href={`/fair?id=${id}`} className="mt-4 inline-block text-sm font-semibold text-blue hover:underline">
+            Verify this result →
+          </Link>
+        )}
         {indexed && (
           <>
             <h3 className="mb-2 mt-5 text-xs font-bold uppercase tracking-[0.16em] text-muted">Transactions</h3>
@@ -210,6 +216,7 @@ function Actions(props: {
   const { address } = useAccount();
   const { arena } = appConfig();
   const secrets = useSuitSecrets();
+  const limits = useLimits();
   const tx = useTx();
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -236,6 +243,7 @@ function Actions(props: {
     const l = left(expiresAt);
     lines.push(l === undefined ? null : l > 0 ? <>Open for <b className="tabular">{formatDuration(l)}</b></> : <>Expired. {isCreator ? "Cancel to get your stake back." : "It can no longer be joined."}</>);
     if (isCreator) buttons.push(<Button key="cancel" variant="secondary" loading={tx.busy} onClick={() => call("Cancel duel", "cancel", [id])}>Cancel duel</Button>);
+    else if (limits.onBreak) lines.push(<BreakNotice until={limits.breakUntil} />);
     else if (l === undefined || l > 0) buttons.push(<Button key="join" variant="blue" size="lg" onClick={() => setJoining(true)}>Join duel</Button>);
   }
 
@@ -311,7 +319,7 @@ function Actions(props: {
   return (
     <div className="space-y-3">
       {lines.filter(Boolean).map((l, i) => (
-        <p key={i} className="text-sm text-ink/90">{l}</p>
+        <div key={i} className="text-sm text-ink/90">{l}</div>
       ))}
       <TxNotice state={tx.state} />
       <div className="flex flex-wrap items-center gap-2">

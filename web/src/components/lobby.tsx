@@ -8,6 +8,7 @@ import { GameIcon } from "./icons";
 import { JoinDuelModal } from "./JoinDuelModal";
 import { Badge, Button, Card, EmptyState, SectionTitle } from "./ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
+import { useLimits } from "@/hooks/useLimits";
 import { GAMES, sameAddress, SIDE_NAMES, type Game } from "@/lib/duel";
 import { formatAmount, formatDuration, parseAmount, shortAddress, timeAgo } from "@/lib/format";
 import { useOpenDuels, useRecentResults, type IndexerDuel, type OpenDuelFilters } from "@/lib/indexer";
@@ -22,6 +23,7 @@ export function OpenDuels() {
   const [maxText, setMaxText] = useState("");
   const [sort, setSort] = useState<OpenDuelFilters["sort"]>("newest");
   const [joinId, setJoinId] = useState<bigint>();
+  const { onBreak } = useLimits();
 
   const token = findToken(tokens, tokenAddr);
   const filters: OpenDuelFilters = {
@@ -110,7 +112,7 @@ export function OpenDuels() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {data.map((d) => (
-            <DuelCard key={d.id} duel={d} token={findToken(tokens, d.token)} onJoin={() => setJoinId(BigInt(d.id))} />
+            <DuelCard key={d.id} duel={d} token={findToken(tokens, d.token)} onBreak={onBreak} onJoin={() => setJoinId(BigInt(d.id))} />
           ))}
         </div>
       )}
@@ -120,7 +122,7 @@ export function OpenDuels() {
   );
 }
 
-function DuelCard({ duel, token, onJoin }: { duel: IndexerDuel; token?: TokenInfo; onJoin: () => void }) {
+function DuelCard({ duel, token, onJoin, onBreak }: { duel: IndexerDuel; token?: TokenInfo; onJoin: () => void; onBreak: boolean }) {
   const { address } = useAccount();
   const now = useNow();
   const mine = sameAddress(duel.creator, address);
@@ -145,7 +147,7 @@ function DuelCard({ duel, token, onJoin }: { duel: IndexerDuel; token?: TokenInf
       </Link>
       <div className="mt-4 flex items-center justify-between gap-3">
         <span className="tabular text-xs text-muted">{left === undefined ? "" : left > 0 ? `${formatDuration(left)} left` : "Expired"}</span>
-        {mine ? (
+        {mine || onBreak ? (
           <Link href={`/duel/${duel.id}`} className="text-sm font-semibold text-muted hover:text-ink">
             View
           </Link>

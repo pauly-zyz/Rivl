@@ -15,18 +15,7 @@ import {
   type KeyValueStore,
   type SuitSecret,
 } from "@/lib/suit";
-
-function browserStore(): KeyValueStore | null {
-  try {
-    const s = window.localStorage;
-    const probe = "rivl:probe";
-    s.setItem(probe, "1");
-    s.removeItem(probe);
-    return s;
-  } catch {
-    return null;
-  }
-}
+import { browserStore } from "@/lib/storage";
 
 /** Rahasia Suit di localStorage, tersinkron antar tab. */
 export function useSuitSecrets() {

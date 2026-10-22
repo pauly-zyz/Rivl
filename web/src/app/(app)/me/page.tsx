@@ -8,13 +8,15 @@ import type { Address } from "viem";
 import { useAccount, useReadContract } from "wagmi";
 
 import { GameIcon } from "@/components/icons";
-import { Badge, Button, Card, EmptyState, SectionTitle, TxNotice } from "@/components/ui";
+import { Badge, BreakNotice, Button, Card, EmptyState, FieldError, SectionTitle, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
+import { useDailyAllowance, useLimits } from "@/hooks/useLimits";
 import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { useTx } from "@/hooks/useTx";
 import { appConfig } from "@/lib/config";
 import { sameAddress, STATUS_LABEL } from "@/lib/duel";
-import { formatAmount, formatDuration, shortAddress } from "@/lib/format";
+import { formatAmount, formatDuration, parseAmount, shortAddress } from "@/lib/format";
+import { BREAK_OPTIONS } from "@/lib/limits";
 import { usePendingReveals, usePlayerDuels, usePlayerStats, type IndexerDuel } from "@/lib/indexer";
 
 export default function MePage() {
@@ -42,6 +44,7 @@ function MyDuels({ address }: { address: Address }) {
         <Claimable address={address} />
         <SuitBackup address={address} />
       </div>
+      <PersonalLimits address={address} />
       <Stats address={address} />
       <History address={address} />
     </div>
@@ -290,5 +293,157 @@ function HistoryRow({ duel, address, decimals, symbol }: { duel: IndexerDuel; ad
       </span>
       <Badge tone={outcome.tone}>{outcome.text}</Badge>
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Batas pribadi (docs/spec.md 5.2): disimpan di browser ini.
+// ---------------------------------------------------------------------------
+
+function PersonalLimits({ address }: { address: Address }) {
+  const { tokens } = useArenaInfo();
+  return (
+    <section id="limits" data-testid="personal-limits">
+      <SectionTitle>Personal limits</SectionTitle>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="divide-y divide-line">
+          <div className="p-4">
+            <h3 className="font-bold">Daily stake limit</h3>
+            <p className="mt-1 text-sm text-muted">
+              Caps how much you can stake per token in any 24 hours. Lowering a limit applies now; raising or removing
+              it takes effect after 24 hours.
+            </p>
+          </div>
+          {tokens.map((t) => (
+            <DailyLimitRow key={t.address} token={t} address={address} />
+          ))}
+        </Card>
+        <TakeABreak />
+      </div>
+      <p className="mt-2 text-xs text-muted">Limits are saved in this browser only.</p>
+    </section>
+  );
+}
+
+function DailyLimitRow({ token, address }: { token: TokenInfo; address: Address }) {
+  const limits = useLimits();
+  const daily = useDailyAllowance(address, token.address, undefined);
+  const pending = limits.pendingFor(token.address);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string>();
+  const fmt = (v: bigint) => `${formatAmount(v, token.decimals)} ${token.symbol}`;
+
+  function save(amount: bigint | null) {
+    try {
+      limits.setLimit(token.address, amount);
+      setText("");
+      setError(undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the limit.");
+    }
+  }
+
+  const parsed = parseAmount(text, token.decimals);
+  return (
+    <div className="space-y-2 p-4" data-testid={`limit-${token.symbol}`}>
+      <div className="tabular flex flex-wrap items-baseline justify-between gap-2 text-sm">
+        <span className="font-bold">{token.symbol}</span>
+        <span className="text-muted">
+          {daily.limit === null ? (
+            "No limit"
+          ) : (
+            <>
+              Limit <b className="text-ink">{fmt(daily.limit)}</b> · used {fmt(daily.spent)} · left{" "}
+              <b className="text-ink">{fmt(daily.remaining!)}</b>
+            </>
+          )}
+        </span>
+      </div>
+      {pending && (
+        <p className="text-xs text-muted">
+          Change to {pending.amount === null ? "no limit" : fmt(pending.amount)} takes effect{" "}
+          {new Date(pending.effectiveAt * 1000).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <input
+          inputMode="decimal"
+          placeholder={`Limit in ${token.symbol}`}
+          aria-label={`Daily limit in ${token.symbol}`}
+          value={text}
+          onChange={(e) => setText(e.target.value.replace(",", "."))}
+          className="tabular h-9 min-w-0 flex-1 rounded-md border border-line bg-raised px-2 text-sm"
+        />
+        <Button size="sm" variant="secondary" disabled={parsed === undefined || parsed === 0n} onClick={() => save(parsed!)}>
+          Set limit
+        </Button>
+        {daily.limit !== null && (
+          <Button size="sm" variant="ghost" onClick={() => save(null)}>
+            Remove
+          </Button>
+        )}
+      </div>
+      {error && <FieldError>{error}</FieldError>}
+    </div>
+  );
+}
+
+function TakeABreak() {
+  const limits = useLimits();
+  const [choice, setChoice] = useState<number>(BREAK_OPTIONS[0].seconds);
+  const [confirming, setConfirming] = useState(false);
+  const label = BREAK_OPTIONS.find((o) => o.seconds === choice)?.label;
+
+  return (
+    <Card className="p-4" >
+      <h3 className="font-bold">Take a break</h3>
+      <p className="mt-1 text-sm text-muted">
+        Hides creating and joining duels in this browser for the period you choose. Revealing, refunds and claims keep
+        working. A break can&apos;t be shortened once started.
+      </p>
+      {limits.onBreak ? (
+        <div className="mt-4">
+          <BreakNotice until={limits.breakUntil} />
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Break length">
+            {BREAK_OPTIONS.map((o) => (
+              <button
+                key={o.seconds}
+                role="radio"
+                aria-checked={choice === o.seconds}
+                onClick={() => {
+                  setChoice(o.seconds);
+                  setConfirming(false);
+                }}
+                className={`rounded-md border px-3 py-1.5 text-sm font-semibold ${
+                  choice === o.seconds ? "border-red bg-red-deep text-ink" : "border-line text-muted hover:text-ink"
+                }`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+          {confirming ? (
+            <div className="space-y-2 rounded-lg border border-red/40 bg-red-deep p-3 text-sm">
+              <p>You won&apos;t be able to create or join duels for {label}. This can&apos;t be undone.</p>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => limits.takeBreak(choice)}>
+                  Start {label} break
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                  Not now
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={() => setConfirming(true)}>
+              Take a break
+            </Button>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

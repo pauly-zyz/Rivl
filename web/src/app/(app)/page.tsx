@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 
+import { ComingSoon } from "@/components/ComingSoon";
 import { CreateDuelModal } from "@/components/CreateDuelModal";
 import { LiveResults, OpenDuels } from "@/components/lobby";
-import { Button } from "@/components/ui";
+import { BreakNotice, Button } from "@/components/ui";
+import { useLimits } from "@/hooks/useLimits";
 
 export default function LobbyPage() {
   const [creating, setCreating] = useState(false);
+  const limits = useLimits();
 
   return (
     <div className="space-y-10">
@@ -25,15 +28,23 @@ export default function LobbyPage() {
           Stake ETH or USDG against another player. Funds sit in the contract until the result is on chain. Rivl never
           plays against you.
         </p>
-        <Button size="lg" className="mt-6" onClick={() => setCreating(true)}>
-          Create duel
-        </Button>
+        {limits.onBreak ? (
+          <div className="mt-6 max-w-md">
+            <BreakNotice until={limits.breakUntil} />
+          </div>
+        ) : (
+          <Button size="lg" className="mt-6" onClick={() => setCreating(true)}>
+            Create duel
+          </Button>
+        )}
       </section>
 
       <div className="grid gap-10 lg:grid-cols-[1fr_340px]">
         <OpenDuels />
         <LiveResults />
       </div>
+
+      <ComingSoon />
 
       <CreateDuelModal open={creating} onClose={() => setCreating(false)} />
     </div>

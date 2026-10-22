@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 
-import { connect, consoleErrors, deployment, getDuel, playerPage } from "./wallet";
+import { connect, deployment, getDuel, pageErrors, playerPage, takeCreatedPages } from "./wallet";
 
 /*
  * Bukti Tahap 3: ketiga game dimainkan dari browser di chain lokal, oleh dua pemain di dua browser context.
@@ -9,7 +9,7 @@ import { connect, consoleErrors, deployment, getDuel, playerPage } from "./walle
  */
 
 const STATUS = ["None", "Open", "AwaitingRandomness", "AwaitingReveal", "Settled", "Draw", "Cancelled", "Refunded"];
-const SHOTS = "test-results/screens";
+const SHOTS = "e2e-screens";
 
 const d = deployment();
 const [ALICE, BOB] = d.testAccounts as [`0x${string}`, `0x${string}`];
@@ -71,11 +71,15 @@ async function assertNoEarlyResult(page: Page, id: bigint, testId: "coin" | "dic
 
 test.describe.configure({ mode: "serial" });
 
-test.afterAll(() => {
-  const unique = [...new Set(consoleErrors.map((e) => e.replace(/^\S+ — /, "")))];
-  console.log(`Error console browser: ${unique.length}`);
-  for (const e of unique.slice(0, 10)) console.log(`  - ${e.slice(0, 200)}`);
+/** Setiap halaman yang dibuka test ini harus bebas error console; context ditutup supaya tidak jalan di latar. */
+test.afterEach(async () => {
+  const pages = takeCreatedPages();
+  const errors = pages.flatMap((p) => pageErrors(p));
+  await Promise.all(pages.map((p) => p.context().close()));
+  expect(errors, "error console browser").toEqual([]);
 });
+
+
 
 test("Coinflip dengan ETH: buat, terima, hasil dari randomness on-chain", async ({ browser }) => {
   const alice = await playerPage(browser, ALICE);

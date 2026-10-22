@@ -7,8 +7,9 @@ import { useEffect, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { GameIcon, MoveIcon } from "./icons";
-import { Button, FieldError, Modal, Row, TxNotice } from "./ui";
+import { BreakNotice, Button, FieldError, Modal, Row, TxNotice } from "./ui";
 import { findToken, useArenaInfo, useNow } from "@/hooks/useArena";
+import { useDailyAllowance } from "@/hooks/useLimits";
 import { useStake } from "@/hooks/useStake";
 import { useTx } from "@/hooks/useTx";
 import { appConfig } from "@/lib/config";
@@ -42,6 +43,7 @@ export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean
   const game = duel ? GAMES[duel.game] : undefined;
   const token = findToken(tokens, duel?.token);
   const stake = useStake(token, duel?.amount);
+  const daily = useDailyAllowance(address, token?.address, duel?.amount);
   const breakdown = duel ? potBreakdown(duel.amount, duel.feeBpsAtCreate) : undefined;
   const own = sameAddress(duel?.creator, address);
   const expired = duel && now !== undefined && now > Number(duel.expiresAt);
@@ -58,7 +60,9 @@ export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean
             ? "New duels are paused right now."
             : stake.insufficient
               ? `Not enough ${token?.symbol} in your wallet.`
-              : undefined;
+              : daily.exceeds && token
+                ? `This is over your daily limit. ${formatAmount(daily.remaining!, token.decimals)} ${token.symbol} left in the last 24 hours.`
+                : undefined;
   const ready = !!duel && !blocker && (game !== "Suit" || move !== undefined);
 
   async function join() {
@@ -138,7 +142,9 @@ export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean
           {blocker && <FieldError>{blocker}</FieldError>}
           <TxNotice state={tx.state} />
 
-          {!isConnected ? (
+          {daily.onBreak ? (
+            <BreakNotice until={daily.breakUntil} />
+          ) : !isConnected ? (
             <Button variant="blue" size="lg" className="w-full" onClick={openConnectModal}>
               Connect wallet
             </Button>

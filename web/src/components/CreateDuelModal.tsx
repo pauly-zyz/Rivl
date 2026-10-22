@@ -8,8 +8,9 @@ import { parseEventLogs, zeroAddress, type Hex } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 
 import { GameIcon, MoveIcon } from "./icons";
-import { Button, FieldError, Modal, Row, TxNotice } from "./ui";
+import { BreakNotice, Button, FieldError, Modal, Row, TxNotice } from "./ui";
 import { useArenaInfo, type TokenInfo } from "@/hooks/useArena";
+import { useDailyAllowance } from "@/hooks/useLimits";
 import { useStake } from "@/hooks/useStake";
 import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { useTx } from "@/hooks/useTx";
@@ -50,13 +51,16 @@ export function CreateDuelModal({ open, onClose }: { open: boolean; onClose: () 
   const token: TokenInfo | undefined = tokens.find((t) => t.address === tokenAddr) ?? tokens[0];
   const amount = token ? parseAmount(amountText, token.decimals) : undefined;
   const stake = useStake(token, amount);
+  const daily = useDailyAllowance(address, token?.address, amount);
 
   const rangeError =
     token && amount !== undefined && (amount < token.minStake || amount > token.maxStake)
       ? `Stake must be between ${formatAmount(token.minStake, token.decimals)} and ${formatAmount(token.maxStake, token.decimals)} ${token.symbol}.`
       : undefined;
   const choiceMissing = game === "Suit" && move === undefined;
-  const ready = !!token && amount !== undefined && amount > 0n && !rangeError && !stake.insufficient && !choiceMissing && !paused;
+  const ready =
+    !!token && amount !== undefined && amount > 0n && !rangeError && !stake.insufficient && !choiceMissing && !paused &&
+    !daily.exceeds && !daily.onBreak;
   const breakdown = amount !== undefined && feeBps !== undefined ? potBreakdown(amount, feeBps) : undefined;
 
   async function approve() {
@@ -189,6 +193,16 @@ export function CreateDuelModal({ open, onClose }: { open: boolean; onClose: () 
           {amountText && amount === undefined && <FieldError>Enter a valid amount.</FieldError>}
           {rangeError && <FieldError>{rangeError}</FieldError>}
           {stake.insufficient && <FieldError>Not enough {token?.symbol} in your wallet.</FieldError>}
+          {daily.exceeds && token && (
+            <FieldError>
+              This is over your daily limit. {formatAmount(daily.remaining!, token.decimals)} {token.symbol} left in the last 24 hours.
+            </FieldError>
+          )}
+          {!daily.exceeds && daily.remaining !== null && token && (
+            <p className="tabular mt-2 text-xs text-muted">
+              Daily limit: {formatAmount(daily.remaining, token.decimals)} of {formatAmount(daily.limit!, token.decimals)} {token.symbol} left.
+            </p>
+          )}
         </Step>
 
         <Step n={4} title={game === "Coinflip" ? "Your side" : game === "Suit" ? "Your move" : "Your pick"}>
@@ -233,18 +247,20 @@ export function CreateDuelModal({ open, onClose }: { open: boolean; onClose: () 
               strong
               value={breakdown && token ? `${formatAmount(breakdown.payout, token.decimals)} ${token.symbol}` : "—"}
             />
-            <p className="pt-1 text-xs text-muted">
-              Draws and refunds return your stake with no fee. Open for {timings ? formatDuration(Number(timings[0])) : "…"};
-              cancel any time before someone joins.
-            </p>
           </dl>
+          <p className="pt-2 text-xs text-muted">
+            Draws and refunds return your stake with no fee. Open for {timings ? formatDuration(Number(timings[0])) : "…"};
+            cancel any time before someone joins.
+          </p>
         </Step>
 
         {paused && <FieldError>New duels are paused right now.</FieldError>}
         {saveError && <FieldError>{saveError}</FieldError>}
         <TxNotice state={tx.state} />
 
-        {!isConnected ? (
+        {daily.onBreak ? (
+          <BreakNotice until={daily.breakUntil} />
+        ) : !isConnected ? (
           <Button size="lg" className="w-full" onClick={openConnectModal}>
             Connect wallet
           </Button>

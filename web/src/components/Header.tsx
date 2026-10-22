@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/", label: "Lobby" },
-  { href: "/me", label: "My duels" },
+  { href: "/", label: "Lobby", mobile: true },
+  { href: "/me", label: "My duels", mobile: true },
+  { href: "/fair", label: "Fair", mobile: false },
+  { href: "/rules", label: "Rules", mobile: false },
 ];
 
 export function Logo() {
@@ -30,7 +32,7 @@ export function Header() {
             <Link
               key={n.href}
               href={n.href}
-              className={`rounded-md px-2.5 py-1.5 ${path === n.href ? "text-ink" : "text-muted hover:text-ink"}`}
+              className={`rounded-md px-2.5 py-1.5 ${n.mobile ? "" : "hidden md:inline"} ${path === n.href ? "text-ink" : "text-muted hover:text-ink"}`}
             >
               {n.label}
             </Link>

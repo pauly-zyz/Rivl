@@ -114,23 +114,61 @@ function installTestWallet(args: { account: string; rpcUrl: string; chainId: num
   announce();
 }
 
-/** Error console browser yang terkumpul selama test (dilaporkan di akhir). */
+/** Error console browser yang terkumpul selama test (semua halaman, dilaporkan di akhir). */
 export const consoleErrors: string[] = [];
+const errorsByPage = new WeakMap<Page, string[]>();
+
+const createdPages: Page[] = [];
+
+/** Halaman yang dibuat sejak pemanggilan terakhir (untuk diperiksa dan ditutup setelah tiap test). */
+export function takeCreatedPages(): Page[] {
+  return createdPages.splice(0);
+}
+
+/** Error console milik satu halaman saja (halaman dari test lain bisa masih berjalan di latar). */
+export function pageErrors(page: Page): string[] {
+  return errorsByPage.get(page) ?? [];
+}
 
 /** Browser context baru dengan dompet uji untuk satu akun Anvil. */
-export async function playerPage(browser: Browser, account: Address, viewport?: { width: number; height: number }) {
+export async function playerPage(
+  browser: Browser,
+  account: Address,
+  viewport?: { width: number; height: number },
+  opts: { ageGate?: "accepted" | "show"; headers?: Record<string, string> } = {},
+) {
   const d = deployment();
   const context = await browser.newContext({ viewport, acceptDownloads: true });
+  if (opts.headers) {
+    // Header negara hanya untuk request ke web (seperti CDN), bukan ke RPC atau indexer.
+    const web = new URL(process.env.WEB_URL ?? "http://localhost:3000").origin;
+    await context.route(`${web}/**`, (route) => route.continue({ headers: { ...route.request().headers(), ...opts.headers } }));
+  }
   await context.addInitScript(installTestWallet, { account, rpcUrl: d.rpcUrl, chainId: d.chainId });
+  if (opts.ageGate !== "show") {
+    // Test lain tidak menguji age gate; anggap pengguna sudah menyetujuinya.
+    await context.addInitScript(() =>
+      localStorage.setItem("rivl:age-gate:v1", JSON.stringify({ accepted: true, at: "test" })),
+    );
+  }
   // Clipboard untuk tombol "Copy link".
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const page = await context.newPage();
+  const errors: string[] = [];
+  errorsByPage.set(page, errors);
+  createdPages.push(page);
+  const record = (msg: string) => {
+    errors.push(msg);
+    consoleErrors.push(msg);
+  };
   page.on("console", (m) => {
-    if (m.type() === "error") consoleErrors.push(`${page.url()} — ${m.text()}`);
+    // Chrome selalu mencatat dokumen non-2xx; 451 adalah status geoblock yang disengaja.
+    if (m.type() === "error" && !m.text().includes("status of 451")) record(`${page.url()} — ${m.text()}`);
   });
-  page.on("pageerror", (e) => consoleErrors.push(`${page.url()} — ${e.message}`));
+  page.on("pageerror", (e) => record(`${page.url()} — ${e.message}`));
   page.on("response", (r) => {
-    if (r.status() >= 400) consoleErrors.push(`${page.url()} — HTTP ${r.status()} ${r.url()}`);
+    // 451 = geoblock yang memang diuji.
+    if (r.status() >= 400 && r.status() !== 451) record(`${page.url()} — HTTP ${r.status()} ${r.url()}`);
   });
   return page;
 }

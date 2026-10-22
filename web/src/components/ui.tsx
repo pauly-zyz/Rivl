@@ -176,3 +176,14 @@ export function Row({ label, value, strong }: { label: string; value: ReactNode;
 export function FieldError({ children }: { children: ReactNode }) {
   return <p className="mt-2 text-sm text-red">{children}</p>;
 }
+
+/** Pemberitahuan saat pengguna sedang "Take a break": Create/Join disembunyikan. */
+export function BreakNotice({ until }: { until?: number }) {
+  return (
+    <div className="rounded-lg border border-line-strong bg-raised px-3 py-2 text-sm text-muted" data-testid="break-notice">
+      You&apos;re taking a break
+      {until ? <> until <b className="text-ink">{new Date(until * 1000).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</b></> : null}
+      . Creating and joining duels is hidden. Reveals, refunds and claims still work.
+    </div>
+  );
+}

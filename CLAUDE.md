@@ -44,3 +44,8 @@ Butuh Node >= 22.12, pnpm 10, dan Foundry (`anvil`, `forge`).
 - Jangan pernah menampilkan hasil sebelum status Settled/Draw di chain (lihat `web/src/components/arena.tsx`).
 - Rahasia Suit: `web/src/lib/suit.ts`. Disimpan di localStorage SEBELUM tx; dicari lewat commit.
 - Teks UI dalam bahasa Inggris.
+- Geoblock ada di `web/src/proxy.ts` (Next 16 menamai middleware "proxy"). Halaman blokir memakai root layout
+  terpisah di `web/src/app/(blocked)`; semua halaman lain di `web/src/app/(app)`.
+- Age gate, batas harian, dan Take a break disimpan di localStorage (`web/src/lib/limits.ts`).
+  Take a break hanya menyembunyikan Create/Join; reveal, refund, dan klaim harus tetap bisa dipakai.
+- Test e2e memeriksa bahwa setiap halaman bebas error console.
