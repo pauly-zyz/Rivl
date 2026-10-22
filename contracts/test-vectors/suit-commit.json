@@ -1,0 +1,60 @@
+{
+  "description": "Rivl Suit commit test vectors. commit = keccak256(abi.encode(uint256 chainId, address arena, address creator, uint8 move, bytes32 salt)). Verified against DuelArena.computeCommit by contracts/test/SuitCommitVectors.t.sol. Frontend unit tests must reproduce every 'commit' exactly.",
+  "abiTypes": ["uint256", "address", "address", "uint8", "bytes32"],
+  "vectors": [
+    {
+      "name": "rock_anvil",
+      "chainId": 31337,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "move": 1,
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "commit": "0x5a8af5715feea5b8e231b0020c1688805b1fd32efd7019a4739ba75e5976ff08"
+    },
+    {
+      "name": "paper_anvil",
+      "chainId": 31337,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "move": 2,
+      "salt": "0x1b5714d49fb511b7efae727f578c86dd9b74d356d8666d87192b63f1e54270e7",
+      "commit": "0xaaa6c3ab3f3c0c8df2b3da16f9e2540face9adb2caff42ea9e39619d5ddf138e"
+    },
+    {
+      "name": "scissors_anvil",
+      "chainId": 31337,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "move": 3,
+      "salt": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "commit": "0x83da9426c69b512d2d4a485a7582365c57492b6d167ff792b6191994db133884"
+    },
+    {
+      "name": "rock_other_creator",
+      "chainId": 31337,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "move": 1,
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000001",
+      "commit": "0x33b34c32579d908d52873ed9e37388f9a6136dce35f2c251173a0841cc1120b9"
+    },
+    {
+      "name": "paper_other_chain",
+      "chainId": 1,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+      "move": 2,
+      "salt": "0x1b5714d49fb511b7efae727f578c86dd9b74d356d8666d87192b63f1e54270e7",
+      "commit": "0xbec2cda51e307493c363f3bd6a28f0f81e5defa7a5f796c32d1d586d6b47de07"
+    },
+    {
+      "name": "scissors_random_salt",
+      "chainId": 31337,
+      "arena": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "creator": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+      "move": 3,
+      "salt": "0x9c2d6f0a4e8b1735c0f2a9d8e7b6c5a4938271605f4e3d2c1b0a998877665544",
+      "commit": "0x02d9715d7aca4a374fbf67f148d7d552232219b138356397453c8e610d67e709"
+    }
+  ]
+}
