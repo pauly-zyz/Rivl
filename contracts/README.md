@@ -100,9 +100,9 @@ test/
   mocks/MockVRFCoordinatorV2Plus.sol
 test-vectors/
   suit-commit.json                   input tetap → commit Suit, untuk unit test frontend
-abi/
-  DuelArena.json                     ABI mentah
-  DuelArena.ts                       `duelArenaAbi` (as const) untuk web & indexer
+abi/                                 hasil script/export-abi.mjs, diimpor sebagai @rivl/contracts/abi
+  DuelArena.{json,ts}                `duelArenaAbi` (as const) untuk web & indexer
+  DevRandomnessProvider.{json,ts}    untuk scripts/auto-fulfill (lokal/testnet)
 script/
   Deploy.s.sol
   export-abi.mjs                     membuat ulang isi abi/
@@ -124,7 +124,7 @@ forge test -vvv
 Setelah mengubah `DuelArena.sol`, buat ulang ABI:
 
 ```bash
-forge build && node script/export-abi.mjs     # tulis abi/DuelArena.{json,ts}
+forge build && node script/export-abi.mjs     # tulis abi/*.{json,ts} (atau: pnpm abi dari root)
 node script/export-abi.mjs --check            # untuk CI: gagal jika abi/ usang
 ```
 

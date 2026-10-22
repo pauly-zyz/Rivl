@@ -1,0 +1,19 @@
+{
+  "name": "rivl",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @rivl/scripts dev",
+    "dev:chain": "pnpm --filter @rivl/scripts dev:chain",
+    "auto-fulfill": "pnpm --filter @rivl/scripts auto-fulfill",
+    "demo": "pnpm --filter @rivl/scripts demo",
+    "indexer": "pnpm --filter @rivl/indexer dev",
+    "test:contracts": "pnpm --filter @rivl/contracts test",
+    "abi": "pnpm --filter @rivl/contracts abi",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

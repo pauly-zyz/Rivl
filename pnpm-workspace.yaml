@@ -1,0 +1,9 @@
+packages:
+  - contracts
+  - indexer
+  - scripts
+  # - web   (Tahap 3)
+
+# pnpm 10 tidak menjalankan install script dependensi kecuali diizinkan di sini.
+onlyBuiltDependencies:
+  - esbuild

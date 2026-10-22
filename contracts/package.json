@@ -1,0 +1,18 @@
+{
+  "name": "@rivl/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Rivl smart contracts (Foundry). ABI diekspor ke abi/ untuk web, indexer, dan scripts.",
+  "exports": {
+    "./abi": "./abi/index.ts",
+    "./abi/*.json": "./abi/*.json",
+    "./test-vectors/*.json": "./test-vectors/*.json"
+  },
+  "scripts": {
+    "build": "forge build",
+    "test": "forge test",
+    "abi": "forge build && node script/export-abi.mjs",
+    "abi:check": "node script/export-abi.mjs --check"
+  }
+}
