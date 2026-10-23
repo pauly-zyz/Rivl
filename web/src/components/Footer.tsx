@@ -23,7 +23,7 @@ export function Footer() {
           <p className="max-w-2xl rounded-xl border border-line bg-surface/70 p-4 text-sm leading-relaxed text-muted">
             <b className="text-ink">18+ only. Play responsibly.</b> Duels use real funds and you can lose your entire
             stake. Blockchain transactions are final and can&apos;t be reversed. Only play with money you can afford to
-            lose. Rivl is not available in all regions, and you are responsible for following the laws where you live.
+            lose. You are responsible for following the laws where you live.
           </p>
         </div>
         <nav className="flex flex-col gap-2.5 text-sm md:items-end" aria-label="Footer">
