@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { parseEther, zeroAddress } from "viem";
 
-import { arenaRead, balanceOf, warp } from "./chain";
+import { arenaRead, arenaWrite, balanceOf, warp } from "./chain";
 import { createDuel, expectStatus, joinDuel } from "./ui";
 import { connect, deployment, getDuel, pageErrors, playerPage, takeCreatedPages } from "./wallet";
 
@@ -124,4 +124,26 @@ test("claim ETH dari My duels: saldo dompet bertambah sebesar klaim (dikurangi g
   expect(gained).toBeLessThanOrEqual(claimable);
   expect(gained).toBeGreaterThan(claimable - parseEther("0.001")); // gas lokal jauh di bawah 0.001 ETH
   await bob.screenshot({ path: `${SHOTS}/32-claimed-eth.png`, fullPage: true });
+});
+
+test("owner baru menerima kepemilikan contract dari My duels (Ownable2Step)", async ({ browser }) => {
+  const original = await arenaRead<`0x${string}`>("owner");
+  const page = await playerPage(browser, BOB);
+  await page.goto("/me");
+  await connect(page);
+  // Belum ditunjuk: kartu tidak tampil.
+  await expect(page.getByTestId("ownership-invite")).toHaveCount(0);
+
+  await arenaWrite(original, "transferOwnership", [BOB]);
+  await page.reload();
+  const card = page.getByTestId("ownership-invite");
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  await card.getByRole("button", { name: "Accept ownership" }).click();
+  await expect.poll(() => arenaRead<string>("owner")).toBe(BOB);
+  await expect(page.getByTestId("ownership-invite").getByRole("button")).toHaveCount(0);
+
+  // Kembalikan owner semula supaya test lain tidak terpengaruh.
+  await arenaWrite(BOB, "transferOwnership", [original]);
+  await arenaWrite(original, "acceptOwnership");
+  expect(await arenaRead<string>("owner")).toBe(original);
 });

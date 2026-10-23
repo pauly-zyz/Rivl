@@ -47,6 +47,7 @@ function MyDuels({ address }: { address: Address }) {
           <p className="mt-1 truncate font-mono text-sm text-muted">{address}</p>
         </div>
       </header>
+      <OwnershipInvite address={address} />
       <PendingReveals address={address} />
       <div className="grid gap-8 lg:grid-cols-2">
         <Claimable address={address} />
@@ -56,6 +57,48 @@ function MyDuels({ address }: { address: Address }) {
       <Stats address={address} />
       <History address={address} />
     </div>
+  );
+}
+
+/**
+ * Hanya tampil untuk alamat yang ditunjuk sebagai owner baru DuelArena (Ownable2Step):
+ * owner baru harus memanggil acceptOwnership() sendiri. Tombol ini memudahkan dompet tanpa kolom hex data.
+ */
+function OwnershipInvite({ address }: { address: Address }) {
+  const { arena } = appConfig();
+  const tx = useTx();
+  const { data: pending, refetch } = useReadContract({
+    address: arena,
+    abi: duelArenaAbi,
+    functionName: "pendingOwner",
+    query: { refetchInterval: 15_000 },
+  });
+  if (!sameAddress(pending as string | undefined, address) && tx.state.status !== "success") return null;
+
+  return (
+    <section className="rounded-2xl border border-blue/50 bg-blue-deep p-4 sm:p-5" data-testid="ownership-invite">
+      <h2 className="text-lg font-black">You&apos;ve been made owner of the Rivl contract</h2>
+      <p className="mt-1 text-sm text-ink/80">
+        Accept to take control of the DuelArena contract ({shortAddress(arena)}): pause, stake limits, fee and
+        treasury. Until you accept, the deployer stays owner. Owners can never move player funds.
+      </p>
+      <TxNotice state={tx.state} />
+      {tx.state.status !== "success" && (
+        <Button
+          className="mt-4"
+          variant="blue"
+          loading={tx.busy}
+          onClick={() =>
+            tx
+              .send("Accept ownership", { address: arena, abi: duelArenaAbi, functionName: "acceptOwnership", args: [] })
+              .then(() => refetch())
+              .catch(() => {})
+          }
+        >
+          Accept ownership
+        </Button>
+      )}
+    </section>
   );
 }
 

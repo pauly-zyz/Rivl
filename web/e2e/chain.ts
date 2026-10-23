@@ -71,6 +71,11 @@ export async function warp(seconds: number) {
   await test.mine({ blocks: 1 });
 }
 
+/** Kirim transaksi ke DuelArena dari akun Anvil yang unlocked (mis. aksi owner). */
+export async function arenaWrite(account: Address, functionName: string, args: readonly unknown[] = []) {
+  await send(account, functionName, args);
+}
+
 export async function arenaRead<T>(functionName: string, args: readonly unknown[] = []): Promise<T> {
   return client.readContract({ address: d.contracts.arena, abi: duelArenaAbi, functionName, args } as never) as Promise<T>;
 }
