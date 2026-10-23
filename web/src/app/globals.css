@@ -77,6 +77,24 @@
   to { transform: translateX(-50%); }
 }
 
+/* Ilustrasi kartu game di lobby (components/gameArt.tsx). */
+@keyframes art-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes art-flip {
+  0%, 38%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.08); }
+  62% { transform: scaleX(1); }
+}
+@keyframes art-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+.art-float { animation: art-float 2.8s ease-in-out infinite; }
+.art-flip { animation: art-flip 3.2s ease-in-out infinite; }
+.art-pulse { animation: art-pulse 2.4s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

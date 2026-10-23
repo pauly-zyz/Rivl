@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { ComingSoonArt } from "./gameArt";
 import { SectionTitle } from "./ui";
 import { COMING_SOON } from "@/lib/comingSoon";
 import { configResult } from "@/lib/config";
@@ -31,6 +32,9 @@ export function ComingSoon() {
             className="hatch card-lift relative flex flex-col overflow-hidden rounded-2xl border border-line bg-surface/70 p-4"
             data-testid="coming-soon-card"
           >
+            <div className="relative -mx-4 -mt-4 mb-4 aspect-[32/14] overflow-hidden border-b border-line">
+              <ComingSoonArt name={f.name} />
+            </div>
             <div className="flex items-start justify-between gap-2">
               <span className="grid h-10 w-10 place-items-center rounded-xl border border-line-strong bg-bg/60 text-muted">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

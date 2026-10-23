@@ -7,6 +7,7 @@ import { useAccount } from "wagmi";
 import { Avatar } from "@/components/Avatar";
 import { ComingSoon } from "@/components/ComingSoon";
 import { CreateDuelModal } from "@/components/CreateDuelModal";
+import { LiveGameArt } from "@/components/gameArt";
 import { GameIcon } from "@/components/icons";
 import { GAME_LABEL, LiveResults, LiveTicker, OpenDuels } from "@/components/lobby";
 import { BreakNotice, Button, SectionTitle } from "@/components/ui";
@@ -74,11 +75,19 @@ export default function LobbyPage() {
               key={g}
               className="card-lift edge-gradient group relative overflow-hidden rounded-2xl border border-line bg-surface/90 p-5 animate-rise"
               style={{ animationDelay: `${i * 70}ms` }}
+              data-testid={`game-card-${g}`}
             >
               <div
                 aria-hidden
                 className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-red/10 blur-3xl transition-opacity group-hover:opacity-100 md:opacity-60"
               />
+              <div className="relative -mx-5 -mt-5 mb-5 aspect-[40/19] overflow-hidden border-b border-line">
+                <LiveGameArt game={g} />
+                <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-red/40 bg-bg/80 px-2.5 py-1 font-display-condensed text-[10px] font-bold uppercase tracking-[0.16em] text-red-bright backdrop-blur">
+                  <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-red" />
+                  Live
+                </span>
+              </div>
               <div className="flex items-start justify-between gap-3">
                 <span className="grid h-14 w-14 place-items-center rounded-2xl border border-red/30 bg-red-deep text-red-bright">
                   <GameIcon game={g} className="h-7 w-7" />
