@@ -330,7 +330,8 @@ Satu perintah `pnpm dev` menjalankan chain lokal, indexer, dan web.
 | `USDG` | contracts, web | Alamat resmi USDG |
 | `ETH_MAX_STAKE`, `USDG_MAX_STAKE` | contracts | Opsional, batas taruhan maks. awal per pemain |
 | `ROBINHOOD_RPC`, `ROBINHOOD_TESTNET_RPC` | semua | RPC resmi |
-| `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_EXPLORER_URL` | web | |
+| `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_EXPLORER_URL` | web | Produksi: `NEXT_PUBLIC_RPC_URL` = relay `/api/rpc` milik web |
+| `RPC_UPSTREAM_URL` | web (server) | Node tujuan relay `/api/rpc`; tidak pernah dikirim ke browser |
 | `NEXT_PUBLIC_ARENA_ADDRESS`, `NEXT_PUBLIC_USDG_ADDRESS` | web | |
 | `NEXT_PUBLIC_INDEXER_URL` | web | |
 | `NEXT_PUBLIC_X_URL` | web | Untuk tombol Notify me |

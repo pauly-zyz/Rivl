@@ -114,7 +114,8 @@ function main() {
   block("Vercel: project web (Root Directory = web)", [
     `NEXT_PUBLIC_CHAIN_ID=${chainId}`,
     `NEXT_PUBLIC_CHAIN_NAME=${net.name}`,
-    `NEXT_PUBLIC_RPC_URL=${rpcNote}`,
+    "NEXT_PUBLIC_RPC_URL=<URL web>/api/rpc   # relay server-side, mis. https://rivl-tau.vercel.app/api/rpc",
+    `RPC_UPSTREAM_URL=${rpcNote}`,
     `NEXT_PUBLIC_EXPLORER_URL=${net.explorer ?? ""}`,
     `NEXT_PUBLIC_ARENA_ADDRESS=${c.arena}`,
     `NEXT_PUBLIC_USDG_ADDRESS=${c.usdg ?? ""}`,

@@ -204,7 +204,8 @@ Web adalah aplikasi Next.js di `web/` dalam pnpm workspace (ABI diimpor dari `@r
 |---|---|
 | `NEXT_PUBLIC_CHAIN_ID` | `46630` |
 | `NEXT_PUBLIC_CHAIN_NAME` | `Robinhood Chain Testnet` |
-| `NEXT_PUBLIC_RPC_URL` | RPC (sebaiknya berbayar) |
+| `NEXT_PUBLIC_RPC_URL` | `https://<domain-web>/api/rpc` (relay web sendiri; browser di beberapa wilayah tidak bisa menjangkau RPC publik langsung) |
+| `RPC_UPSTREAM_URL` | hanya server: RPC tujuan relay (sebaiknya berbayar; API key aman di sini) |
 | `NEXT_PUBLIC_EXPLORER_URL` | `https://explorer.testnet.chain.robinhood.com` |
 | `NEXT_PUBLIC_ARENA_ADDRESS` | alamat DuelArena |
 | `NEXT_PUBLIC_USDG_ADDRESS` | alamat USDG testnet |
