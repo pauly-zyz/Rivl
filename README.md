@@ -7,6 +7,15 @@ bisa diverifikasi, dan membayar pemenang `2 × taruhan − fee 2,5%`. Rivl tidak
 > **Status:** belum diaudit. Ketiga game memakai commit-reveal antar pemain (tanpa VRF atau operator), jadi tidak ada
 > ketergantungan ke layanan randomness (lihat [docs/spec.md](docs/spec.md) bagian 2.5).
 
+**Deployment mainnet** (Robinhood Chain, chain ID 4663, 23 Okt 2026):
+
+| | |
+|---|---|
+| DuelArena | `0x8CD728AeF4CC0ff548A95C13cc647FBD70f400b9` (blok 95798376) |
+| Treasury | `0x4b08C1DbE28e4e260037299e8cb4B34c7FBe2195` |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| Batas taruhan awal | ETH 0,0005–0,05 · USDG 1–100 per pemain · fee 2,5% |
+
 | Dokumen | Isi |
 |---|---|
 | [docs/spec.md](docs/spec.md) | Spesifikasi lengkap (acuan utama) |
