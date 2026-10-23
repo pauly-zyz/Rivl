@@ -136,11 +136,16 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
           <Row label="Stake per player" value={fmt(duel.amount)} />
           <Row label={`Fee (${duel.feeBpsAtCreate / 100}% of pot, locked at creation)`} value={fmt(fee)} />
           <Row label="Winner receives" value={fmt(payout)} />
-          {game !== "Suit" && duel.requestId > 0n && <Row label="Randomness request" value={`#${duel.requestId}`} />}
-          {game !== "Suit" && (status === "Settled" || status === "Draw") && (
+          <Row label="Creator's commit" value={<span className="break-all font-mono text-xs">{duel.commit}</span>} />
+          {game !== "Suit" && !isZeroHash(duel.joinerSeed) && (
+            <Row label="Rival's seed" value={<span className="break-all font-mono text-xs">{duel.joinerSeed}</span>} />
+          )}
+          {!isZeroHash(duel.salt) && (
+            <Row label="Revealed salt" value={<span className="break-all font-mono text-xs">{duel.salt}</span>} />
+          )}
+          {hasRandomWord(game, duel) && (
             <Row label="Random word" value={<span className="break-all font-mono text-xs">{duel.randomWord.toString()}</span>} />
           )}
-          {game === "Suit" && <Row label="Commit" value={<span className="break-all font-mono text-xs">{duel.commit}</span>} />}
         </dl>
         {(status === "Settled" || status === "Draw") && (
           <Link href={`/fair?id=${id}`} className="mt-4 inline-block text-sm font-semibold text-blue hover:underline">
@@ -152,7 +157,7 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
             <h3 className="mb-2 mt-5 text-xs font-bold uppercase tracking-[0.16em] text-muted">Transactions</h3>
             <ul className="space-y-1 text-sm">
               <TxItem label="Created" hash={indexed.createdTx} />
-              {indexed.joinedTx && <TxItem label={game === "Suit" ? "Joined" : "Joined · randomness requested"} hash={indexed.joinedTx} />}
+              {indexed.joinedTx && <TxItem label="Joined" hash={indexed.joinedTx} />}
               {indexed.revealTx && <TxItem label="Revealed" hash={indexed.revealTx} />}
               {indexed.settledTx && <TxItem label={STATUS_LABEL[indexed.status]} hash={indexed.settledTx} />}
             </ul>
@@ -161,6 +166,13 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
       </Card>
     </div>
   );
+}
+
+const isZeroHash = (h: string) => /^0x0*$/.test(h);
+
+/** Coinflip/Dice yang di-reveal dengan benar punya angka acak; timeout atau commit tidak valid tidak punya. */
+function hasRandomWord(game: Game, d: ChainDuel) {
+  return game !== "Suit" && !isZeroHash(d.salt) && d.randomWord !== 0n;
 }
 
 function choiceLabel(game: Game, d: ChainDuel, side: "creator" | "joiner"): string | undefined {
@@ -233,12 +245,13 @@ function Corner({
 
 function ArenaAnimation({ game, status, duel }: { game: Game; status: Status; duel: ChainDuel }) {
   const finished = status === "Settled" || status === "Draw";
+  const revealed = hasRandomWord(game, duel);
   if (game === "Coinflip") {
-    const phase = status === "AwaitingRandomness" ? "waiting" : status === "Settled" ? "result" : "idle";
+    const phase = status === "AwaitingReveal" ? "waiting" : status === "Settled" && revealed ? "result" : "idle";
     return <CoinFlip phase={phase} result={phase === "result" ? duel.creatorResult : undefined} creatorSide={duel.creatorChoice} />;
   }
   if (game === "Dice") {
-    const phase = status === "AwaitingRandomness" ? "waiting" : finished ? "result" : "idle";
+    const phase = status === "AwaitingReveal" ? "waiting" : finished && revealed ? "result" : "idle";
     return (
       <DiceDuel
         phase={phase}
@@ -262,7 +275,7 @@ function ResultBanner({ status, duel, address, payout }: { status: Status; duel:
   if (status === "Settled") {
     const won = sameAddress(address, duel.winner);
     const lost = !won && (sameAddress(address, duel.creator) || sameAddress(address, duel.joiner));
-    const timeout = GAMES[duel.game] === "Suit" && duel.creatorChoice === 0;
+    const timeout = isZeroHash(duel.salt);
     text = won ? (
       <>You won <b>{payout}</b></>
     ) : lost ? (
@@ -272,7 +285,6 @@ function ResultBanner({ status, duel, address, payout }: { status: Status; duel:
     );
     if (timeout) text = <>{text} <span className="text-muted">· creator didn&apos;t reveal in time</span></>;
   } else if (status === "Draw") text = <>Draw — both stakes returned, no fee.</>;
-  else if (status === "Refunded") text = <>Randomness didn&apos;t arrive in time. Both stakes refunded, no fee.</>;
   else if (status === "Cancelled") text = <>Cancelled by the creator. Stake returned.</>;
   if (!text) return null;
   return (
@@ -318,7 +330,7 @@ function Actions(props: {
   const call = (label: string, functionName: string, args: readonly unknown[]) =>
     tx.send(label, { address: arena, abi: duelArenaAbi, functionName, args }).catch(() => {});
 
-  const secret = game === "Suit" ? secrets.find(duel.commit) : undefined;
+  const secret = secrets.find(duel.commit);
   const lines: ReactNode[] = [];
   const buttons: ReactNode[] = [];
 
@@ -328,16 +340,6 @@ function Actions(props: {
     if (isCreator) buttons.push(<Button key="cancel" variant="secondary" loading={tx.busy} onClick={() => call("Cancel duel", "cancel", [id])}>Cancel duel</Button>);
     else if (limits.onBreak) lines.push(<BreakNotice until={limits.breakUntil} />);
     else if (l === undefined || l > 0) buttons.push(<Button key="join" variant="blue" size="lg" onClick={() => setJoining(true)}>Join duel</Button>);
-  }
-
-  if (status === "AwaitingRandomness") {
-    const l = left(deadline);
-    if (l !== undefined && l < 0) {
-      lines.push(<>Randomness is late. Anyone can refund both players (no fee).</>);
-      buttons.push(<Button key="refund" variant="secondary" loading={tx.busy} onClick={() => call("Refund", "refundStuckRandomness", [id])}>Refund both players</Button>);
-    } else {
-      lines.push(<>Waiting for verifiable randomness. If it doesn&apos;t arrive, a refund opens in <b className="tabular">{l === undefined ? "…" : formatDuration(l)}</b>.</>);
-    }
   }
 
   if (status === "AwaitingReveal") {
@@ -353,14 +355,14 @@ function Actions(props: {
       );
       if (isCreator && secret) {
         buttons.push(
-          <Button key="reveal" size="lg" loading={tx.busy} onClick={() => call("Reveal move", "revealSuit", [id, secret.move, secret.salt])}>
-            Reveal my move
+          <Button key="reveal" size="lg" loading={tx.busy} onClick={() => call("Reveal", "reveal", [id, secret.move, secret.salt])}>
+            {game === "Suit" ? "Reveal my move" : game === "Coinflip" ? "Reveal & flip" : "Reveal & roll"}
           </Button>,
         );
       } else if (isCreator) {
         lines.push(
           <span className="text-red">
-            Your move for this duel isn&apos;t saved in this browser.{" "}
+            Your secret for this duel isn&apos;t saved in this browser.{" "}
             <Link href="/me#backup" className="underline">Restore your backup</Link> to reveal.
           </span>,
         );
@@ -378,7 +380,7 @@ function Actions(props: {
   // Tombol klaim hanya jika duel INI memberi dana ke pengguna (saldo claimable bisa berasal dari duel lain).
   const owedHere =
     (status === "Settled" && sameAddress(address, duel.winner)) ||
-    ((status === "Draw" || status === "Refunded") && (isCreator || isJoiner)) ||
+    (status === "Draw" && (isCreator || isJoiner)) ||
     (status === "Cancelled" && isCreator);
   const canClaim = owedHere && typeof claimable === "bigint" && claimable > 0n;
   if (canClaim && token) {

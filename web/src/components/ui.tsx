@@ -189,7 +189,7 @@ export function BreakNotice({ until }: { until?: number }) {
     <div className="rounded-lg border border-line-strong bg-raised px-3 py-2 text-sm text-muted" data-testid="break-notice">
       You&apos;re taking a break
       {until ? <> until <b className="text-ink">{new Date(until * 1000).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</b></> : null}
-      . Creating and joining duels is hidden. Reveals, refunds and claims still work.
+      . Creating and joining duels is hidden. Reveals, timeouts and claims still work.
     </div>
   );
 }

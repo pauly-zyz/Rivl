@@ -46,7 +46,7 @@ contract ReentrantPlayer {
     }
 
     function createAndCancel(uint256 amount) external payable {
-        uint256 id = arena.createCoinflip{value: amount}(address(0), amount, 0);
+        uint256 id = arena.createCoinflip{value: amount}(address(0), amount, 0, keccak256("reentrant-player"));
         arena.cancel(id);
     }
 

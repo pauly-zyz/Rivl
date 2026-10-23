@@ -9,7 +9,10 @@ import {
   findSecret,
   loadSecrets,
   parseBackup,
+  parseSecret,
   randomSalt,
+  randomSeed,
+  randomWordOf,
   removeSecret,
   restoreBackup,
   saveSecret,
@@ -32,7 +35,7 @@ function memoryStore(): KeyValueStore & { data: Map<string, string> } {
 const ARENA = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as Address;
 const ALICE = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Address;
 
-function makeSecret(move: 1 | 2 | 3, salt: Hex = randomSalt()): SuitSecret {
+function makeSecret(move: 0 | 1 | 2 | 3, salt: Hex = randomSalt()): SuitSecret {
   return {
     chainId: 31337,
     arena: ARENA,
@@ -142,7 +145,40 @@ describe("penyimpanan rahasia Suit", () => {
 
   it("file yang bukan backup Rivl ditolak", () => {
     expect(() => parseBackup("not json")).toThrow(/not valid JSON/);
-    expect(() => parseBackup(JSON.stringify({ hello: "world" }))).toThrow(/not a Rivl Suit backup/);
+    expect(() => parseBackup(JSON.stringify({ hello: "world" }))).toThrow(/not a Rivl backup/);
+  });
+});
+
+describe("Coinflip/Dice: rahasia dan angka acak", () => {
+  it("rahasia Coinflip/Dice (move 0) bisa disimpan, dicari, dan di-backup", () => {
+    const store = memoryStore();
+    const s = makeSecret(0);
+    saveSecret(store, s);
+    expect(findSecret(store, s.commit)?.move).toBe(0);
+    const { secrets } = parseBackup(exportBackup([s]));
+    expect(secrets).toHaveLength(1);
+    expect(secrets[0]!.move).toBe(0);
+  });
+
+  it("menolak nilai move di luar 0–3", () => {
+    const s = makeSecret(1);
+    const bad = { ...s, move: 4, commit: computeCommit({ chainId: 31337, arena: ARENA, creator: ALICE, move: 4, salt: s.salt }) };
+    expect(parseSecret(bad)).toBeNull();
+  });
+
+  it("randomWord = keccak256(abi.encode(salt, seed)), sama dengan cast/Solidity", () => {
+    const salt = `0x${"11".repeat(32)}` as Hex;
+    const seed = `0x${"22".repeat(32)}` as Hex;
+    // cast keccak $(cast abi-encode "f(bytes32,bytes32)" 0x11…11 0x22…22)
+    expect(randomWordOf(salt, seed)).toBe(0x3e92e0db88d6afea9edc4eedf62fffa4d92bcdfc310dccbe943747fe8302e871n);
+    expect(randomWordOf(seed, salt)).not.toBe(randomWordOf(salt, seed));
+  });
+
+  it("randomSeed: 32 byte, bukan nol, selalu baru", () => {
+    const a = randomSeed();
+    expect(a).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(BigInt(a)).not.toBe(0n);
+    expect(randomSeed()).not.toBe(a);
   });
 });
 

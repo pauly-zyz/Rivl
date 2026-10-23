@@ -17,8 +17,8 @@ import { formatAmount } from "@/lib/format";
 import { useGlobalStats, useOpenDuels } from "@/lib/indexer";
 
 const FAIRNESS: Record<Game, string> = {
-  Coinflip: "Verifiable randomness",
-  Dice: "Verifiable randomness",
+  Coinflip: "Two-secret randomness",
+  Dice: "Two-secret randomness",
   Suit: "Commit–reveal",
 };
 

@@ -1,10 +1,9 @@
 /**
- * `pnpm dev` — chain lokal + auto-fulfill + indexer + web dalam satu perintah.
+ * `pnpm dev` — chain lokal + indexer + web dalam satu perintah.
  *
  *   1. scripts/dev-chain     Anvil + deploy + isi akun test → deployments/local.json
- *   2. scripts/auto-fulfill  memenuhi request DevRandomnessProvider
- *   3. indexer (Ponder)      INDEXER_CHAIN=local, http://localhost:INDEXER_PORT
- *   4. web (Next.js)         http://localhost:WEB_PORT, NEXT_PUBLIC_* diisi dari deployments/local.json
+ *   2. indexer (Ponder)      INDEXER_CHAIN=local, http://localhost:INDEXER_PORT
+ *   3. web (Next.js)         http://localhost:WEB_PORT, NEXT_PUBLIC_* diisi dari deployments/local.json
  *
  * Ctrl+C menghentikan semuanya. Chain dimulai dari nol setiap kali, jadi database indexer juga direset.
  */
@@ -13,7 +12,6 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { startDevChain } from "./dev-chain/index.ts";
-import { startAutoFulfill } from "./auto-fulfill/index.ts";
 import { INDEXER_DIR, REPO_ROOT, envInt, envString, loadRootEnv } from "./lib/env.ts";
 import { logger, pipeLines, type LogTag } from "./lib/log.ts";
 
@@ -37,10 +35,6 @@ async function main(): Promise<void> {
   const indexerUrl = `http://localhost:${indexerPort}`;
 
   const chain = await startDevChain();
-  const fulfill = await startAutoFulfill().catch((err: unknown) => {
-    chain.stop();
-    throw err;
-  });
   const d = chain.deployment;
 
   // Chain baru → data indexer lama tidak berlaku lagi.
@@ -68,7 +62,6 @@ async function main(): Promise<void> {
   const shutdown = (code: number) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    fulfill.stop();
     for (const c of Object.values(children)) c.kill("SIGTERM");
     chain.stop();
     setTimeout(() => process.exit(code), 500);

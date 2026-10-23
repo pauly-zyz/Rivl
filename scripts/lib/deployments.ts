@@ -4,7 +4,7 @@ import type { Address } from "viem";
 
 import { REPO_ROOT } from "./env.ts";
 
-/** Ditulis oleh scripts/dev-chain, dibaca auto-fulfill, indexer (INDEXER_CHAIN=local), dan demo. */
+/** Ditulis oleh scripts/dev-chain, dibaca indexer (INDEXER_CHAIN=local), demo, dan e2e. */
 export const LOCAL_DEPLOYMENT_FILE = join(REPO_ROOT, "deployments", "local.json");
 
 export type LocalDeployment = {
@@ -16,7 +16,6 @@ export type LocalDeployment = {
   treasury: Address;
   contracts: {
     arena: Address;
-    devRandomness: Address;
     usdg: Address;
   };
   usdgDecimals: number;

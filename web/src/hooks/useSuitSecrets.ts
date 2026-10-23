@@ -17,7 +17,7 @@ import {
 } from "@/lib/suit";
 import { browserStore } from "@/lib/storage";
 
-/** Rahasia Suit di localStorage, tersinkron antar tab. */
+/** Rahasia duel (semua game) di localStorage, tersinkron antar tab. */
 export function useSuitSecrets() {
   const [secrets, setSecrets] = useState<SuitSecret[]>([]);
   const [available, setAvailable] = useState(true);
@@ -41,7 +41,7 @@ export function useSuitSecrets() {
     <T,>(fn: (s: KeyValueStore) => T): T => {
       const store = browserStore();
       if (!store) {
-        throw new Error("This browser blocks local storage, so your Suit move can't be saved. Use a normal window.");
+        throw new Error("This browser blocks local storage, so your duel secret can't be saved. Use a normal window.");
       }
       const result = fn(store);
       refresh();

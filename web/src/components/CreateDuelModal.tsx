@@ -18,7 +18,7 @@ import { appConfig } from "@/lib/config";
 import { GAMES, GAME_TAGLINE, potBreakdown, SIDE_NAMES, type Game } from "@/lib/duel";
 import { isUserRejection } from "@/lib/errors";
 import { formatAmount, formatDuration, parseAmount } from "@/lib/format";
-import { computeCommit, MOVE_NAMES, MOVES, randomSalt, type Move } from "@/lib/suit";
+import { computeCommit, MOVE_NAMES, MOVES, NO_MOVE, randomSalt, type Move } from "@/lib/suit";
 
 export function CreateDuelModal({
   open,
@@ -80,22 +80,23 @@ export function CreateDuelModal({
   async function create() {
     if (!ready || !address || !token || amount === undefined) return;
     const value = token.isEth ? amount : undefined;
-    let commit: Hex | undefined;
+
+    // docs/spec.md 5.3: salt acak → commit di browser → simpan SEBELUM mengirim transaksi (semua game).
+    const secretMove = game === "Suit" ? move! : NO_MOVE;
+    const salt = randomSalt();
+    const commit: Hex = computeCommit({ chainId: chain.id, arena, creator: address, move: secretMove, salt });
+    try {
+      secrets.save({ chainId: chain.id, arena, creator: address, move: secretMove, salt, commit, createdAt: Date.now() });
+      setSaveError(undefined);
+    } catch (err) {
+      // Tanpa salt tersimpan, pemain tidak bisa reveal. Jangan kirim transaksi.
+      setSaveError(err instanceof Error ? err.message : "Could not save your duel secret in this browser.");
+      return;
+    }
 
     try {
       let receipt;
       if (game === "Suit") {
-        // docs/spec.md 5.3: salt acak → commit di browser → simpan SEBELUM mengirim transaksi.
-        const salt = randomSalt();
-        commit = computeCommit({ chainId: chain.id, arena, creator: address, move: move!, salt });
-        try {
-          secrets.save({ chainId: chain.id, arena, creator: address, move: move!, salt, commit, createdAt: Date.now() });
-          setSaveError(undefined);
-        } catch (err) {
-          // Tanpa salt tersimpan, pemain tidak bisa reveal. Jangan kirim transaksi.
-          setSaveError(err instanceof Error ? err.message : "Could not save your move in this browser.");
-          return;
-        }
         receipt = await tx.send("Create duel", {
           address: arena,
           abi: duelArenaAbi,
@@ -108,7 +109,7 @@ export function CreateDuelModal({
           address: arena,
           abi: duelArenaAbi,
           functionName: "createCoinflip",
-          args: [token.address, amount, side],
+          args: [token.address, amount, side, commit],
           value,
         });
       } else {
@@ -116,19 +117,19 @@ export function CreateDuelModal({
           address: arena,
           abi: duelArenaAbi,
           functionName: "createDice",
-          args: [token.address, amount],
+          args: [token.address, amount, commit],
           value,
         });
       }
 
       const [created] = parseEventLogs({ abi: duelArenaAbi, logs: receipt.logs, eventName: "DuelCreated" });
       if (!created) return;
-      if (commit) secrets.attach(commit, created.args.id);
+      secrets.attach(commit, created.args.id);
       onClose();
       router.push(`/duel/${created.args.id}`);
     } catch (err) {
       // Transaksi tidak pernah terkirim → rahasia tidak terpakai.
-      if (commit && isUserRejection(err)) secrets.remove(commit);
+      if (isUserRejection(err)) secrets.remove(commit);
     }
   }
 
@@ -226,6 +227,14 @@ export function CreateDuelModal({
             </div>
           )}
           {game === "Dice" && <p className="text-sm text-muted">Nothing to pick. You and your rival each roll 1–100.</p>}
+          {game !== "Suit" && (
+            <p className="mt-2 text-sm text-muted">
+              The result comes from a secret your browser locks in now and a random number from your rival. When
+              someone joins, you have {timings ? formatDuration(Number(timings[1])) : "…"} to come back and reveal — or
+              your rival wins. The secret is saved in this browser; back it up from{" "}
+              <span className="text-ink">My duels</span>.
+            </p>
+          )}
           {game === "Suit" && (
             <>
               <div className="grid grid-cols-3 gap-2">
@@ -259,7 +268,7 @@ export function CreateDuelModal({
             />
           </dl>
           <p className="pt-2 text-xs text-muted">
-            Draws and refunds return your stake with no fee. Open for {timings ? formatDuration(Number(timings[0])) : "…"};
+            Draws return your stake with no fee. Open for {timings ? formatDuration(Number(timings[0])) : "…"};
             cancel any time before someone joins.
           </p>
         </Step>

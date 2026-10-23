@@ -2,7 +2,7 @@ import { createTestClient, createWalletClient, defineChain, http, parseEther, ze
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { duelArenaAbi } from "@rivl/contracts/abi";
 
-import { computeCommit, randomSalt } from "../src/lib/suit";
+import { computeCommit, NO_MOVE, randomSalt, randomSeed } from "../src/lib/suit";
 import { chainClient, deployment, getDuel } from "./wallet";
 
 /** Mainkan duel langsung lewat RPC (akun Anvil unlocked) untuk menyiapkan data test /fair. */
@@ -25,23 +25,20 @@ async function nextId() {
   return client.readContract({ address: d.contracts.arena, abi: duelArenaAbi, functionName: "nextDuelId" });
 }
 
-async function waitFinished(id: bigint) {
-  for (let i = 0; i < 100; i++) {
-    const s = (await getDuel(id)).status;
-    if (s === 4 || s === 5) return;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`duel ${id} belum selesai (auto-fulfill jalan?)`);
-}
+const ZERO_HASH = `0x${"0".repeat(64)}` as const;
 
 const stake = parseEther("0.001");
 
 export async function playRandomDuel(game: "Coinflip" | "Dice", creator: Address, joiner: Address): Promise<bigint> {
+  const salt = randomSalt();
+  const commit = computeCommit({ chainId: d.chainId, arena: d.contracts.arena, creator, move: NO_MOVE, salt });
   const id = await nextId();
-  if (game === "Coinflip") await send(creator, "createCoinflip", [zeroAddress, stake, 1], stake);
-  else await send(creator, "createDice", [zeroAddress, stake], stake);
-  await send(joiner, "join", [id, 0], stake);
-  await waitFinished(id);
+  if (game === "Coinflip") await send(creator, "createCoinflip", [zeroAddress, stake, 1, commit], stake);
+  else await send(creator, "createDice", [zeroAddress, stake, commit], stake);
+  await send(joiner, "join", [id, 0, randomSeed()], stake);
+  await send(creator, "reveal", [id, NO_MOVE, salt]);
+  const s = (await getDuel(id)).status;
+  if (s !== 3 && s !== 4) throw new Error(`duel ${id} belum selesai setelah reveal (status ${s})`);
   return id;
 }
 
@@ -50,8 +47,8 @@ export async function playSuit(creator: Address, joiner: Address, move: number, 
   const commit = computeCommit({ chainId: d.chainId, arena: d.contracts.arena, creator, move, salt });
   const id = await nextId();
   await send(creator, "createSuit", [zeroAddress, stake, commit], stake);
-  await send(joiner, "join", [id, joinerMove], stake);
-  await send(creator, "revealSuit", [id, move, salt]);
+  await send(joiner, "join", [id, joinerMove, ZERO_HASH], stake);
+  await send(creator, "reveal", [id, move, salt]);
   return id;
 }
 

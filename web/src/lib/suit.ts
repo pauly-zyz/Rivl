@@ -6,10 +6,27 @@ export const SCISSORS = 3;
 export type Move = typeof ROCK | typeof PAPER | typeof SCISSORS;
 export const MOVES: readonly Move[] = [ROCK, PAPER, SCISSORS];
 export const MOVE_NAMES: Record<number, string> = { 1: "Rock", 2: "Paper", 3: "Scissors" };
+/** Nilai `move` di commit Coinflip/Dice: rahasianya hanya salt (DuelArena.NO_MOVE). */
+export const NO_MOVE = 0;
+/** Nilai yang disimpan di rahasia: pilihan Suit, atau NO_MOVE untuk Coinflip/Dice. */
+export type SecretMove = Move | typeof NO_MOVE;
 
 /** Salt 32 byte acak, baru untuk setiap duel (docs/spec.md 5.3 langkah 1). */
 export function randomSalt(): Hex {
   return bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+/** Seed 32 byte acak dari penerima Coinflip/Dice, baru untuk setiap join. Tidak pernah nol. */
+export function randomSeed(): Hex {
+  for (;;) {
+    const seed = randomSalt();
+    if (BigInt(seed) !== 0n) return seed;
+  }
+}
+
+/** Angka acak Coinflip/Dice = keccak256(abi.encode(bytes32 salt, bytes32 joinerSeed)) (docs/spec.md 2.1–2.2). */
+export function randomWordOf(salt: Hex, seed: Hex): bigint {
+  return BigInt(keccak256(encodeAbiParameters([{ type: "bytes32" }, { type: "bytes32" }], [salt, seed])));
 }
 
 /**
@@ -39,17 +56,18 @@ export function suitWinner(creatorMove: number, joinerMove: number): "creator" |
 }
 
 // ---------------------------------------------------------------------------
-// Penyimpanan rahasia Suit (docs/spec.md 5.3 langkah 3–5)
+// Penyimpanan rahasia duel, semua game (docs/spec.md 5.3 langkah 3–5)
 // ---------------------------------------------------------------------------
 
 export type SuitSecret = {
   chainId: number;
   arena: Address;
   creator: Address;
-  move: Move;
+  /** Suit: pilihan pembuat. Coinflip/Dice: NO_MOVE (0). */
+  move: SecretMove;
   salt: Hex;
   commit: Hex;
-  /** Diisi setelah transaksi createSuit terkonfirmasi. */
+  /** Diisi setelah transaksi create* terkonfirmasi. */
   duelId?: string;
   createdAt: number;
 };
@@ -71,7 +89,7 @@ export function parseSecret(value: unknown): SuitSecret | null {
     !isAddress(v.arena) ||
     typeof v.creator !== "string" ||
     !isAddress(v.creator) ||
-    !MOVES.includes(move as Move) ||
+    !(move === NO_MOVE || MOVES.includes(move as Move)) ||
     typeof v.salt !== "string" ||
     !isHex(v.salt) ||
     v.salt.length !== 66 ||
@@ -85,7 +103,7 @@ export function parseSecret(value: unknown): SuitSecret | null {
     chainId: v.chainId as number,
     arena: getAddress(v.arena),
     creator: getAddress(v.creator),
-    move: move as Move,
+    move: move as SecretMove,
     salt: v.salt.toLowerCase() as Hex,
     commit: v.commit.toLowerCase() as Hex,
     createdAt: typeof v.createdAt === "number" ? v.createdAt : 0,
@@ -121,7 +139,7 @@ export function mergeSecrets(existing: SuitSecret[], incoming: SuitSecret[]): Su
 /** Simpan SEBELUM transaksi dikirim. Dibaca ulang untuk memastikan tersimpan. */
 export function saveSecret(store: KeyValueStore, secret: SuitSecret): void {
   writeSecrets(store, mergeSecrets(loadSecrets(store), [secret]));
-  if (!findSecret(store, secret.commit)) throw new Error("Could not save your Suit secret in this browser.");
+  if (!findSecret(store, secret.commit)) throw new Error("Could not save your duel secret in this browser.");
 }
 
 export function attachDuelId(store: KeyValueStore, commit: Hex, duelId: bigint | string): void {
@@ -159,7 +177,7 @@ export function parseBackup(text: string): { secrets: SuitSecret[]; invalid: num
     : data && typeof data === "object" && (data as { type?: unknown }).type === BACKUP_TYPE
       ? (data as { secrets?: unknown }).secrets
       : undefined;
-  if (!Array.isArray(list)) throw new Error("This file is not a Rivl Suit backup.");
+  if (!Array.isArray(list)) throw new Error("This file is not a Rivl backup.");
   const secrets = list.map(parseSecret).filter((s): s is SuitSecret => s !== null);
   return { secrets, invalid: list.length - secrets.length };
 }

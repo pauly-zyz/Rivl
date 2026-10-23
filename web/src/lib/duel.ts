@@ -5,27 +5,16 @@ export type Game = (typeof GAMES)[number];
 export const GAME_INDEX: Record<Game, number> = { Coinflip: 0, Dice: 1, Suit: 2 };
 
 /** Urutan sama dengan enum Status di DuelArena.sol. */
-export const STATUSES = [
-  "None",
-  "Open",
-  "AwaitingRandomness",
-  "AwaitingReveal",
-  "Settled",
-  "Draw",
-  "Cancelled",
-  "Refunded",
-] as const;
+export const STATUSES = ["None", "Open", "AwaitingReveal", "Settled", "Draw", "Cancelled"] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const STATUS_LABEL: Record<Status, string> = {
   None: "Not found",
   Open: "Open",
-  AwaitingRandomness: "Rolling",
   AwaitingReveal: "Waiting for reveal",
   Settled: "Settled",
   Draw: "Draw",
   Cancelled: "Cancelled",
-  Refunded: "Refunded",
 };
 
 export const HEADS = 0;
@@ -45,9 +34,10 @@ export type ChainDuel = {
   token: Address;
   winner: Address;
   amount: bigint;
-  requestId: bigint;
   randomWord: bigint;
   commit: Hex;
+  joinerSeed: Hex;
+  salt: Hex;
   createdAt: bigint;
   expiresAt: bigint;
   joinedAt: bigint;

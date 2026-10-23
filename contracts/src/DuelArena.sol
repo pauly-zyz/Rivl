@@ -8,18 +8,21 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import {IRandomnessProvider, IRandomnessConsumer} from "./interfaces/IRandomness.sol";
-
 /// @title DuelArena — game PvP 1 lawan 1 dengan taruhan ETH atau USDG
 /// @notice Game: Coinflip, Dice Duel, Suit (Gunting-Batu-Kertas).
 ///         Platform tidak pernah melawan pemain: dana kedua pemain dikunci (escrow),
 ///         pemenang mendapat pot dikurangi fee, fee masuk ke treasury.
-/// @dev Prinsip keamanan:
+/// @dev Semua game memakai commit-reveal antar pemain, tanpa oracle atau operator:
+///      - Pembuat mengirim commit (hash dari pilihan/rahasia + salt) saat membuat duel.
+///      - Penerima bergabung dengan pilihannya (Suit) atau seed acak miliknya (Coinflip/Dice).
+///      - Pembuat membuka commit. Coinflip/Dice: angka acak = keccak256(salt, seed penerima).
+///      - Pembuat yang tidak membuka sebelum batas waktu kalah, jadi menahan rahasia tidak menguntungkan.
+///      Prinsip keamanan:
 ///      - Pull payment: hasil dikreditkan ke `claimable`, pemain menarik sendiri via `withdraw`.
 ///      - Owner TIDAK bisa menyentuh dana pemain; `rescue` hanya untuk kelebihan saldo.
 ///      - Fee dikunci saat duel dibuat (owner tidak bisa menaikkan fee duel yang sudah ada).
 ///      - Setiap status "menunggu" punya batas waktu, jadi dana tidak bisa terjebak selamanya.
-contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsumer {
+contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
 
     // ------------------------------------------------------------------
@@ -35,27 +38,26 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     enum Status {
         None,
         Open, // menunggu lawan
-        AwaitingRandomness, // Coinflip/Dice: menunggu VRF
-        AwaitingReveal, // Suit: menunggu pembuat membuka pilihannya
+        AwaitingReveal, // menunggu pembuat membuka commit
         Settled, // ada pemenang
         Draw, // seri, dana dikembalikan tanpa fee
-        Cancelled, // dibatalkan pembuat sebelum ada lawan
-        Refunded // randomness tidak datang tepat waktu, dana dikembalikan tanpa fee
+        Cancelled // dibatalkan pembuat sebelum ada lawan
     }
 
     struct Duel {
         address creator;
         address joiner;
         address token; // address(0) = ETH
-        address winner; // address(0) jika seri/refund/batal
+        address winner; // address(0) jika seri/batal
         uint256 amount; // taruhan per pemain
-        uint256 requestId; // id permintaan randomness
-        uint256 randomWord; // disimpan untuk transparansi
-        bytes32 commit; // Suit: hash pilihan pembuat
+        uint256 randomWord; // Coinflip/Dice: keccak256(abi.encode(salt, joinerSeed)), disimpan untuk transparansi
+        bytes32 commit; // hash pilihan/rahasia pembuat
+        bytes32 joinerSeed; // Coinflip/Dice: seed acak dari penerima
+        bytes32 salt; // salt pembuat, terisi setelah reveal
         uint64 createdAt;
         uint64 expiresAt; // batas waktu duel bisa diterima
         uint64 joinedAt;
-        uint64 deadline; // batas waktu randomness / reveal
+        uint64 deadline; // batas waktu reveal
         uint16 feeBpsAtCreate;
         GameType game;
         Status status;
@@ -82,6 +84,9 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     uint8 public constant PAPER = 2; // Kertas
     uint8 public constant SCISSORS = 3; // Gunting
 
+    /// @notice Nilai `move` di commit Coinflip/Dice. Rahasianya hanya salt.
+    uint8 public constant NO_MOVE = 0;
+
     uint16 public constant BPS = 10_000;
     uint16 public constant MAX_FEE_BPS = 1_000; // maksimal 10%
 
@@ -91,16 +96,13 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
 
     uint16 public feeBps;
     address public treasury;
-    IRandomnessProvider public randomnessProvider;
 
     uint64 public openDuration = 24 hours;
-    uint64 public randomnessTimeout = 1 hours;
     uint64 public revealWindow = 1 hours;
 
     uint256 public nextDuelId = 1;
 
     mapping(uint256 => Duel) private _duels;
-    mapping(uint256 => uint256) public requestToDuel;
     mapping(bytes32 => bool) public commitUsed;
     mapping(address => TokenConfig) public tokenConfig;
 
@@ -125,22 +127,19 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         bytes32 commit,
         uint64 expiresAt
     );
-    event DuelJoined(uint256 indexed id, address indexed joiner, uint8 joinerChoice, uint64 deadline);
-    event RandomnessRequested(uint256 indexed id, uint256 indexed requestId);
-    event MoveRevealed(uint256 indexed id, uint8 move);
+    event DuelJoined(uint256 indexed id, address indexed joiner, uint8 joinerChoice, bytes32 joinerSeed, uint64 deadline);
+    event Revealed(uint256 indexed id, uint8 move, bytes32 salt);
     event DuelSettled(
         uint256 indexed id, address indexed winner, address token, uint256 payout, uint256 fee, uint256 randomWord
     );
     event DuelDrawn(uint256 indexed id);
     event DuelCancelled(uint256 indexed id);
-    event DuelRefunded(uint256 indexed id);
     event Withdrawn(address indexed user, address indexed token, uint256 amount);
 
     event FeeUpdated(uint16 feeBps);
     event TreasuryUpdated(address treasury);
-    event RandomnessProviderUpdated(address provider);
     event TokenConfigUpdated(address indexed token, bool allowed, uint128 minStake, uint128 maxStake);
-    event TimingsUpdated(uint64 openDuration, uint64 randomnessTimeout, uint64 revealWindow);
+    event TimingsUpdated(uint64 openDuration, uint64 revealWindow);
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
     // ------------------------------------------------------------------
@@ -155,6 +154,7 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     error UnsupportedToken();
     error InvalidSide();
     error InvalidMove();
+    error InvalidSeed();
     error InvalidCommit();
     error CommitAlreadyUsed();
     error InvalidStatus();
@@ -164,8 +164,6 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     error RevealWindowClosed();
     error InvalidReveal();
     error TooEarly();
-    error OnlyRandomnessProvider();
-    error DuplicateRequest();
     error NothingToWithdraw();
     error EthTransferFailed();
     error InvalidConfig();
@@ -174,13 +172,10 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     // Constructor
     // ------------------------------------------------------------------
 
-    constructor(address initialOwner, address treasury_, address provider_, uint16 feeBps_)
-        Ownable(initialOwner)
-    {
-        if (treasury_ == address(0) || provider_ == address(0)) revert ZeroAddress();
+    constructor(address initialOwner, address treasury_, uint16 feeBps_) Ownable(initialOwner) {
+        if (treasury_ == address(0)) revert ZeroAddress();
         if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
         treasury = treasury_;
-        randomnessProvider = IRandomnessProvider(provider_);
         feeBps = feeBps_;
     }
 
@@ -189,7 +184,8 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     // ------------------------------------------------------------------
 
     /// @notice Buat duel Coinflip. Pembuat memilih sisi, penerima otomatis mendapat sisi lawannya.
-    function createCoinflip(address token, uint256 amount, uint8 side)
+    /// @param commit `computeCommit(creator, NO_MOVE, salt)`; salt 32 byte acak dan baru, dihitung di browser.
+    function createCoinflip(address token, uint256 amount, uint8 side, bytes32 commit)
         external
         payable
         nonReentrant
@@ -197,23 +193,25 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         returns (uint256 id)
     {
         if (side > TAILS) revert InvalidSide();
-        id = _create(GameType.Coinflip, token, amount, side, bytes32(0));
+        _useCommit(commit);
+        id = _create(GameType.Coinflip, token, amount, side, commit);
     }
 
     /// @notice Buat Dice Duel. Kedua pemain mendapat angka 1–100, angka tertinggi menang, seri = refund.
-    function createDice(address token, uint256 amount)
+    /// @param commit `computeCommit(creator, NO_MOVE, salt)`; salt 32 byte acak dan baru, dihitung di browser.
+    function createDice(address token, uint256 amount, bytes32 commit)
         external
         payable
         nonReentrant
         whenNotPaused
         returns (uint256 id)
     {
-        id = _create(GameType.Dice, token, amount, 0, bytes32(0));
+        _useCommit(commit);
+        id = _create(GameType.Dice, token, amount, 0, commit);
     }
 
     /// @notice Buat duel Suit dengan pilihan yang disembunyikan.
-    /// @param commit Hash dari `computeCommit(creator, move, salt)`.
-    ///        Hitung di sisi klien (browser), salt harus 32 byte acak dan baru untuk setiap duel.
+    /// @param commit `computeCommit(creator, move, salt)`; salt 32 byte acak dan baru, dihitung di browser.
     function createSuit(address token, uint256 amount, bytes32 commit)
         external
         payable
@@ -221,9 +219,7 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         whenNotPaused
         returns (uint256 id)
     {
-        if (commit == bytes32(0)) revert InvalidCommit();
-        if (commitUsed[commit]) revert CommitAlreadyUsed();
-        commitUsed[commit] = true;
+        _useCommit(commit);
         id = _create(GameType.Suit, token, amount, 0, commit);
     }
 
@@ -232,13 +228,20 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     // ------------------------------------------------------------------
 
     /// @notice Terima duel. Kirim taruhan yang sama dengan pembuat.
-    /// @param move Hanya untuk Suit (1 = Batu, 2 = Kertas, 3 = Gunting). Abaikan (isi 0) untuk game lain.
-    function join(uint256 id, uint8 move) external payable nonReentrant whenNotPaused {
+    /// @param move Suit: 1 = Batu, 2 = Kertas, 3 = Gunting. Coinflip/Dice: isi 0.
+    /// @param seed Coinflip/Dice: 32 byte acak dan baru dari penerima (bukan nol). Suit: isi 0.
+    function join(uint256 id, uint8 move, bytes32 seed) external payable nonReentrant whenNotPaused {
         Duel storage d = _duels[id];
         if (d.status != Status.Open) revert InvalidStatus();
         if (block.timestamp > d.expiresAt) revert DuelExpired();
         if (msg.sender == d.creator) revert CannotJoinOwnDuel();
-        if (d.game == GameType.Suit && (move < ROCK || move > SCISSORS)) revert InvalidMove();
+        if (d.game == GameType.Suit) {
+            if (move < ROCK || move > SCISSORS) revert InvalidMove();
+        } else {
+            if (move != 0) revert InvalidMove();
+            // Seed nol mudah ditebak pembuat sebelum membuat commit; tolak supaya tidak dipakai tanpa sengaja.
+            if (seed == bytes32(0)) revert InvalidSeed();
+        }
 
         // Nominal sudah divalidasi saat duel dibuat; perubahan config setelahnya
         // tidak boleh memblokir duel yang sudah ada.
@@ -246,42 +249,52 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
 
         d.joiner = msg.sender;
         d.joinedAt = uint64(block.timestamp);
+        d.joinerChoice = move;
+        if (d.game != GameType.Suit) d.joinerSeed = seed;
+        d.status = Status.AwaitingReveal;
+        d.deadline = uint64(block.timestamp) + revealWindow;
 
-        if (d.game == GameType.Suit) {
-            d.joinerChoice = move;
-            d.status = Status.AwaitingReveal;
-            d.deadline = uint64(block.timestamp) + revealWindow;
-            emit DuelJoined(id, msg.sender, move, d.deadline);
-        } else {
-            d.status = Status.AwaitingRandomness;
-            d.deadline = uint64(block.timestamp) + randomnessTimeout;
-            emit DuelJoined(id, msg.sender, 0, d.deadline);
-
-            uint256 requestId = randomnessProvider.requestRandomness();
-            if (requestToDuel[requestId] != 0) revert DuplicateRequest();
-            requestToDuel[requestId] = id;
-            d.requestId = requestId;
-            emit RandomnessRequested(id, requestId);
-        }
+        emit DuelJoined(id, msg.sender, move, d.joinerSeed, d.deadline);
     }
 
     // ------------------------------------------------------------------
     // Penyelesaian
     // ------------------------------------------------------------------
 
-    /// @inheritdoc IRandomnessConsumer
-    /// @dev Tidak pernah revert untuk request yang tidak dikenal/sudah selesai,
-    ///      supaya callback VRF tidak gagal.
-    function fulfillRandomness(uint256 requestId, uint256 randomWord) external override {
-        if (msg.sender != address(randomnessProvider)) revert OnlyRandomnessProvider();
-
-        uint256 id = requestToDuel[requestId];
-        if (id == 0) return;
-        delete requestToDuel[requestId];
-
+    /// @notice Pembuat membuka commit-nya dan duel langsung selesai.
+    /// @param move Suit: pilihan yang di-commit. Coinflip/Dice: 0 (NO_MOVE).
+    /// @dev Jika hash cocok tapi nilai `move` tidak valid untuk game itu, pembuat dinyatakan kalah.
+    function reveal(uint256 id, uint8 move, bytes32 salt) external nonReentrant {
         Duel storage d = _duels[id];
-        if (d.status != Status.AwaitingRandomness) return;
+        if (d.status != Status.AwaitingReveal) revert InvalidStatus();
+        if (msg.sender != d.creator) revert NotCreator();
+        if (block.timestamp > d.deadline) revert RevealWindowClosed();
+        if (computeCommit(d.creator, move, salt) != d.commit) revert InvalidReveal();
 
+        d.salt = salt;
+        emit Revealed(id, move, salt);
+
+        if (d.game == GameType.Suit) {
+            d.creatorChoice = move;
+            if (move < ROCK || move > SCISSORS) {
+                _settle(id, d, d.joiner);
+            } else if (move == d.joinerChoice) {
+                _draw(id, d);
+            } else {
+                // X mengalahkan Y jika X == (Y % 3) + 1  → Kertas>Batu, Gunting>Kertas, Batu>Gunting
+                bool creatorWins = move == (d.joinerChoice % 3) + 1;
+                _settle(id, d, creatorWins ? d.creator : d.joiner);
+            }
+            return;
+        }
+
+        if (move != NO_MOVE) {
+            _settle(id, d, d.joiner);
+            return;
+        }
+
+        // Pembuat mengunci salt sebelum seed penerima diketahui; penerima memilih seed tanpa tahu salt.
+        uint256 randomWord = uint256(keccak256(abi.encode(salt, d.joinerSeed)));
         d.randomWord = randomWord;
 
         if (d.game == GameType.Coinflip) {
@@ -302,49 +315,13 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         }
     }
 
-    /// @notice Pembuat duel Suit membuka pilihannya.
-    /// @dev Jika hash cocok tapi pilihan tidak valid (bukan 1–3), pembuat dinyatakan kalah.
-    function revealSuit(uint256 id, uint8 move, bytes32 salt) external nonReentrant {
-        Duel storage d = _duels[id];
-        if (d.status != Status.AwaitingReveal) revert InvalidStatus();
-        if (msg.sender != d.creator) revert NotCreator();
-        if (block.timestamp > d.deadline) revert RevealWindowClosed();
-        if (computeCommit(d.creator, move, salt) != d.commit) revert InvalidReveal();
-
-        d.creatorChoice = move;
-        emit MoveRevealed(id, move);
-
-        if (move < ROCK || move > SCISSORS) {
-            _settle(id, d, d.joiner);
-        } else if (move == d.joinerChoice) {
-            _draw(id, d);
-        } else {
-            // X mengalahkan Y jika X == (Y % 3) + 1  → Kertas>Batu, Gunting>Kertas, Batu>Gunting
-            bool creatorWins = move == (d.joinerChoice % 3) + 1;
-            _settle(id, d, creatorWins ? d.creator : d.joiner);
-        }
-    }
-
-    /// @notice Jika pembuat Suit tidak membuka pilihan sebelum batas waktu, penerima menang.
+    /// @notice Jika pembuat tidak membuka commit sebelum batas waktu, penerima menang.
     ///         Siapa pun boleh memanggil; hadiah tetap masuk ke penerima.
     function claimRevealTimeout(uint256 id) external nonReentrant {
         Duel storage d = _duels[id];
         if (d.status != Status.AwaitingReveal) revert InvalidStatus();
         if (block.timestamp <= d.deadline) revert TooEarly();
         _settle(id, d, d.joiner);
-    }
-
-    /// @notice Jika randomness tidak datang sebelum batas waktu, kedua pemain mendapat dananya kembali (tanpa fee).
-    ///         Siapa pun boleh memanggil.
-    function refundStuckRandomness(uint256 id) external nonReentrant {
-        Duel storage d = _duels[id];
-        if (d.status != Status.AwaitingRandomness) revert InvalidStatus();
-        if (block.timestamp <= d.deadline) revert TooEarly();
-
-        delete requestToDuel[d.requestId];
-        d.status = Status.Refunded;
-        _releaseToBoth(d);
-        emit DuelRefunded(id);
     }
 
     /// @notice Pembuat membatalkan duel yang belum diterima siapa pun (termasuk yang sudah kedaluwarsa).
@@ -383,8 +360,8 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         return _duels[id];
     }
 
-    /// @notice Rumus commit untuk Suit. Terikat ke chain, kontrak ini, dan alamat pembuat,
-    ///         jadi commit tidak bisa disalin orang lain.
+    /// @notice Rumus commit untuk semua game. Terikat ke chain, kontrak ini, dan alamat pembuat,
+    ///         jadi commit tidak bisa disalin orang lain. Coinflip/Dice memakai move = NO_MOVE (0).
     /// @dev Untuk produksi, hitung di browser (keccak256 dari abi.encode yang sama).
     ///      Memanggil fungsi ini lewat RPC mengirim pilihan + salt ke penyedia RPC.
     function computeCommit(address creator, uint8 move, bytes32 salt) public view returns (bytes32) {
@@ -407,14 +384,6 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
         emit TreasuryUpdated(newTreasury);
     }
 
-    /// @dev Request yang masih menunggu dari provider lama tidak akan bisa diselesaikan
-    ///      dan akan di-refund setelah `randomnessTimeout`.
-    function setRandomnessProvider(address newProvider) external onlyOwner {
-        if (newProvider == address(0)) revert ZeroAddress();
-        randomnessProvider = IRandomnessProvider(newProvider);
-        emit RandomnessProviderUpdated(newProvider);
-    }
-
     function setTokenConfig(address token, bool allowed, uint128 minStake, uint128 maxStake) external onlyOwner {
         if (allowed && (minStake == 0 || minStake > maxStake)) revert InvalidConfig();
         tokenConfig[token] = TokenConfig(allowed, minStake, maxStake);
@@ -422,14 +391,12 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     }
 
     /// @dev Hanya berlaku untuk duel yang dibuat/diterima setelah perubahan.
-    function setTimings(uint64 openDuration_, uint64 randomnessTimeout_, uint64 revealWindow_) external onlyOwner {
+    function setTimings(uint64 openDuration_, uint64 revealWindow_) external onlyOwner {
         if (openDuration_ < 5 minutes || openDuration_ > 7 days) revert InvalidConfig();
-        if (randomnessTimeout_ < 10 minutes || randomnessTimeout_ > 1 days) revert InvalidConfig();
         if (revealWindow_ < 5 minutes || revealWindow_ > 1 days) revert InvalidConfig();
         openDuration = openDuration_;
-        randomnessTimeout = randomnessTimeout_;
         revealWindow = revealWindow_;
-        emit TimingsUpdated(openDuration_, randomnessTimeout_, revealWindow_);
+        emit TimingsUpdated(openDuration_, revealWindow_);
     }
 
     /// @notice Hentikan pembuatan & penerimaan duel baru. Batal, penyelesaian, dan penarikan tetap berjalan.
@@ -456,6 +423,12 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
     // ------------------------------------------------------------------
     // Internal
     // ------------------------------------------------------------------
+
+    function _useCommit(bytes32 commit) internal {
+        if (commit == bytes32(0)) revert InvalidCommit();
+        if (commitUsed[commit]) revert CommitAlreadyUsed();
+        commitUsed[commit] = true;
+    }
 
     function _create(GameType game, address token, uint256 amount, uint8 choice, bytes32 commit)
         internal
@@ -514,14 +487,10 @@ contract DuelArena is Ownable2Step, ReentrancyGuard, Pausable, IRandomnessConsum
 
     function _draw(uint256 id, Duel storage d) internal {
         d.status = Status.Draw;
-        _releaseToBoth(d);
-        emit DuelDrawn(id);
-    }
-
-    function _releaseToBoth(Duel storage d) internal {
         escrowed[d.token] -= d.amount * 2;
         _credit(d.creator, d.token, d.amount);
         _credit(d.joiner, d.token, d.amount);
+        emit DuelDrawn(id);
     }
 
     function _credit(address user, address token, uint256 amount) internal {

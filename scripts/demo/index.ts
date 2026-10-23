@@ -1,18 +1,19 @@
 /**
  * `pnpm demo` — mainkan duel di chain lokal, lalu buktikan indexer mengembalikan data yang benar.
  *
- * Butuh `pnpm dev` yang sedang berjalan (chain + auto-fulfill + indexer).
+ * Butuh `pnpm dev` yang sedang berjalan (chain + indexer).
  *
- * Skenario:
- *   1. Coinflip ETH        dibuat, diterima, diselesaikan auto-fulfill
- *   2. Dice USDG           approve → dibuat, diterima, diselesaikan auto-fulfill
+ * Skenario (semua game: pembuat commit → penerima join → pembuat reveal):
+ *   1. Coinflip ETH        dibuat, diterima dengan seed, di-reveal
+ *   2. Dice USDG           approve → dibuat, diterima, di-reveal
  *   3. Suit ETH            commit → diterima → reveal → selesai
  *   4. Suit ETH            diterima, BELUM di-reveal   (muncul di pending-reveals)
  *   5. Coinflip USDG       dibiarkan terbuka           (muncul di daftar duel terbuka)
  *   6. Dice ETH            dibatalkan pembuat
- *   7. Dice ETH            seri (randomWord dipilih demo lewat DevRandomnessProvider sebelum auto-fulfill)
+ *   7. Dice ETH            seri (demo memilih seed bob dulu, lalu mencari salt yang membuat angka sama — hanya
+ *                          bisa karena demo mengendalikan kedua pemain)
  *   8. Suit ETH            pembuat me-reveal pilihan tidak valid → penerima menang
- *   9. Coinflip ETH        randomness "tidak datang" → waktu dimajukan → refundStuckRandomness
+ *   9. Coinflip ETH        pembuat tidak reveal → waktu dimajukan → claimRevealTimeout
  *  10. Suit ETH            pembuat tidak reveal → waktu dimajukan → claimRevealTimeout
  *  11. withdraw            semua saldo claimable pemain & treasury
  *
@@ -35,17 +36,18 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { devRandomnessProviderAbi, duelArenaAbi } from "@rivl/contracts/abi";
+import { duelArenaAbi } from "@rivl/contracts/abi";
 
 import { envInt, envString, loadRootEnv } from "../lib/env.ts";
 import { readLocalDeployment } from "../lib/deployments.ts";
 import { logger } from "../lib/log.ts";
-import { computeSuitCommit, randomSalt, PAPER, ROCK, SCISSORS } from "../lib/suit.ts";
+import { computeSuitCommit, randomSalt, randomWordOf, NO_MOVE, PAPER, ROCK, SCISSORS } from "../lib/suit.ts";
 
 const log = logger("demo");
 
 const GAMES = ["Coinflip", "Dice", "Suit"] as const;
-const STATUSES = ["None", "Open", "AwaitingRandomness", "AwaitingReveal", "Settled", "Draw", "Cancelled", "Refunded"] as const;
+const STATUSES = ["None", "Open", "AwaitingReveal", "Settled", "Draw", "Cancelled"] as const;
+const ZERO_HASH = `0x${"0".repeat(64)}` as Hex;
 const MOVES = ["", "ROCK", "PAPER", "SCISSORS"];
 
 loadRootEnv();
@@ -91,13 +93,15 @@ async function createdId(account: Address, functionName: string, args: readonly 
   return before;
 }
 
-async function waitForRandomness(id: bigint) {
-  for (let i = 0; i < 150; i++) {
-    const s = STATUSES[(await getDuel(id)).status];
-    if (s !== "AwaitingRandomness") return s;
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`duel #${id} tidak diselesaikan auto-fulfill dalam 30 detik. Apakah pnpm dev berjalan?`);
+/** Commit Coinflip/Dice baru untuk `creator` (move = NO_MOVE). */
+function coinDiceCommit(creator: Address, salt = randomSalt()) {
+  return { salt, commit: computeSuitCommit({ chainId: d.chainId, arena, creator, move: NO_MOVE, salt }) };
+}
+
+/** Status duel setelah pembuat reveal. */
+async function reveal(creator: Address, id: bigint, move: number, salt: Hex) {
+  await arenaTx(creator, "reveal", [id, move, salt]);
+  return STATUSES[(await getDuel(id)).status]!;
 }
 
 function fmt(token: string, amount: bigint | string) {
@@ -149,9 +153,10 @@ async function play() {
   log.info(`Arena ${arena} · alice ${short(alice)} · bob ${short(bob)}`);
 
   // 1. Coinflip ETH
-  const cf = await createdId(alice, "createCoinflip", [zeroAddress, parseEther("0.01"), 0], parseEther("0.01"));
-  await arenaTx(bob, "join", [cf, 0], parseEther("0.01"));
-  const cfStatus = await waitForRandomness(cf);
+  const c1 = coinDiceCommit(alice);
+  const cf = await createdId(alice, "createCoinflip", [zeroAddress, parseEther("0.01"), 0, c1.commit], parseEther("0.01"));
+  await arenaTx(bob, "join", [cf, 0, randomSalt()], parseEther("0.01"));
+  const cfStatus = await reveal(alice, cf, NO_MOVE, c1.salt);
   const cfDuel = await getDuel(cf);
   log.info(`#${cf} Coinflip 0.01 ETH: alice HEADS vs bob TAILS → ${cfDuel.creatorResult === 0 ? "HEADS" : "TAILS"}, ${cfStatus}, pemenang ${name(cfDuel.winner)}`);
 
@@ -160,9 +165,10 @@ async function play() {
   for (const who of [alice, bob]) {
     await tx(who, { address: usdg, abi: erc20Abi, functionName: "approve", args: [arena, stake] });
   }
-  const dice = await createdId(alice, "createDice", [usdg, stake]);
-  await arenaTx(bob, "join", [dice, 0]);
-  const diceStatus = await waitForRandomness(dice);
+  const c2 = coinDiceCommit(alice);
+  const dice = await createdId(alice, "createDice", [usdg, stake, c2.commit]);
+  await arenaTx(bob, "join", [dice, 0, randomSalt()]);
+  const diceStatus = await reveal(alice, dice, NO_MOVE, c2.salt);
   const diceDuel = await getDuel(dice);
   log.info(`#${dice} Dice 25 USDG: alice ${diceDuel.creatorResult} vs bob ${diceDuel.joinerResult} → ${diceStatus}${diceStatus === "Settled" ? `, pemenang ${name(diceDuel.winner)}` : ""}`);
 
@@ -170,8 +176,8 @@ async function play() {
   const salt = randomSalt();
   const commit = computeSuitCommit({ chainId: d.chainId, arena, creator: alice, move: ROCK, salt });
   const suit = await createdId(alice, "createSuit", [zeroAddress, parseEther("0.02"), commit], parseEther("0.02"));
-  await arenaTx(bob, "join", [suit, PAPER], parseEther("0.02"));
-  await arenaTx(alice, "revealSuit", [suit, ROCK, salt]);
+  await arenaTx(bob, "join", [suit, PAPER, ZERO_HASH], parseEther("0.02"));
+  await reveal(alice, suit, ROCK, salt);
   const suitDuel = await getDuel(suit);
   log.info(`#${suit} Suit 0.02 ETH: alice ROCK vs bob PAPER → ${STATUSES[suitDuel.status]}, pemenang ${name(suitDuel.winner)}`);
 
@@ -179,31 +185,36 @@ async function play() {
   const salt2 = randomSalt();
   const commit2 = computeSuitCommit({ chainId: d.chainId, arena, creator: alice, move: SCISSORS, salt: salt2 });
   const pending = await createdId(alice, "createSuit", [zeroAddress, parseEther("0.005"), commit2], parseEther("0.005"));
-  await arenaTx(bob, "join", [pending, ROCK], parseEther("0.005"));
+  await arenaTx(bob, "join", [pending, ROCK, ZERO_HASH], parseEther("0.005"));
   log.info(`#${pending} Suit 0.005 ETH: bob memilih ROCK, alice belum reveal (AwaitingReveal)`);
 
   // 5. Coinflip USDG dibiarkan terbuka
   const openStake = parseUnits("10", d.usdgDecimals);
   await tx(alice, { address: usdg, abi: erc20Abi, functionName: "approve", args: [arena, openStake] });
-  const open = await createdId(alice, "createCoinflip", [usdg, openStake, 1]);
+  const open = await createdId(alice, "createCoinflip", [usdg, openStake, 1, coinDiceCommit(alice).commit]);
   log.info(`#${open} Coinflip 10 USDG TAILS: dibiarkan terbuka`);
 
   // 6. Dice ETH dibatalkan
-  const cancelled = await createdId(bob, "createDice", [zeroAddress, parseEther("0.005")], parseEther("0.005"));
+  const cancelled = await createdId(bob, "createDice", [zeroAddress, parseEther("0.005"), coinDiceCommit(bob).commit], parseEther("0.005"));
   await arenaTx(bob, "cancel", [cancelled]);
   log.info(`#${cancelled} Dice 0.005 ETH: dibatalkan bob`);
 
-  // 7. Dice seri: demo memenuhi request sendiri (owner DevRandomnessProvider) sebelum jeda auto-fulfill habis.
-  const draw = await createdId(alice, "createDice", [zeroAddress, parseEther("0.01")], parseEther("0.01"));
-  await arenaTx(bob, "join", [draw, 0], parseEther("0.01"));
-  const sameRoll = (41n << 128n) | 41n; // kedua pemain mendapat 42
-  await tx(d.owner, {
-    address: d.contracts.devRandomness,
-    abi: devRandomnessProviderAbi,
-    functionName: "fulfill",
-    args: [(await getDuel(draw)).requestId, sameRoll],
-  });
-  log.info(`#${draw} Dice 0.01 ETH: alice 42 vs bob 42 → ${STATUSES[(await getDuel(draw)).status]}`);
+  // 7. Dice seri. Hanya demo yang bisa begini: demo memegang kedua pemain, jadi memilih seed bob dulu
+  //    lalu mencari salt alice yang membuat kedua angka sama. Pemain sungguhan tidak tahu seed lawan saat commit.
+  const drawSeed = randomSalt();
+  let drawSalt: Hex = randomSalt();
+  for (let i = 0; ; i++) {
+    const w = randomWordOf(drawSalt, drawSeed);
+    if (((w & ((1n << 128n) - 1n)) % 100n) === ((w >> 128n) % 100n)) break;
+    if (i > 100_000) throw new Error("salt seri tidak ditemukan");
+    drawSalt = randomSalt();
+  }
+  const drawCommit = coinDiceCommit(alice, drawSalt);
+  const draw = await createdId(alice, "createDice", [zeroAddress, parseEther("0.01"), drawCommit.commit], parseEther("0.01"));
+  await arenaTx(bob, "join", [draw, 0, drawSeed], parseEther("0.01"));
+  const drawStatus = await reveal(alice, draw, NO_MOVE, drawSalt);
+  const drawDuel = await getDuel(draw);
+  log.info(`#${draw} Dice 0.01 ETH: alice ${drawDuel.creatorResult} vs bob ${drawDuel.joinerResult} → ${drawStatus}`);
 
   // 8. Suit dengan pilihan tidak valid (4) di commit → penerima menang saat reveal
   const salt3 = randomSalt();
@@ -213,31 +224,27 @@ async function play() {
     [zeroAddress, parseEther("0.005"), computeSuitCommit({ chainId: d.chainId, arena, creator: alice, move: 4, salt: salt3 })],
     parseEther("0.005"),
   );
-  await arenaTx(bob, "join", [invalid, SCISSORS], parseEther("0.005"));
-  await arenaTx(alice, "revealSuit", [invalid, 4, salt3]);
+  await arenaTx(bob, "join", [invalid, SCISSORS, ZERO_HASH], parseEther("0.005"));
+  await reveal(alice, invalid, 4, salt3);
   log.info(`#${invalid} Suit 0.005 ETH: alice me-reveal move 4 (tidak valid) → pemenang ${name((await getDuel(invalid)).winner)}`);
 
-  // 9 & 10. Timeout: majukan waktu chain melewati batas randomness dan reveal.
+  // 9 & 10. Timeout: pembuat tidak reveal, waktu chain dimajukan melewati jendela reveal.
   const timeoutSuit = await createdId(
     alice,
     "createSuit",
     [zeroAddress, parseEther("0.005"), computeSuitCommit({ chainId: d.chainId, arena, creator: alice, move: PAPER, salt: randomSalt() })],
     parseEther("0.005"),
   );
-  await arenaTx(bob, "join", [timeoutSuit, ROCK], parseEther("0.005"));
-  const refund = await createdId(alice, "createCoinflip", [zeroAddress, parseEther("0.005"), 0], parseEther("0.005"));
-  await arenaTx(bob, "join", [refund, 0], parseEther("0.005"));
-  // Dikerjakan dalam jeda auto-fulfill (AUTO_FULFILL_DELAY_MS), jadi randomness belum datang.
-  const [randomnessTimeout, revealWindow] = await Promise.all([
-    publicClient.readContract({ address: arena, abi: duelArenaAbi, functionName: "randomnessTimeout" }),
-    publicClient.readContract({ address: arena, abi: duelArenaAbi, functionName: "revealWindow" }),
-  ]);
-  await testClient.increaseTime({ seconds: Number(randomnessTimeout > revealWindow ? randomnessTimeout : revealWindow) + 1 });
+  await arenaTx(bob, "join", [timeoutSuit, ROCK, ZERO_HASH], parseEther("0.005"));
+  const timeoutCoin = await createdId(alice, "createCoinflip", [zeroAddress, parseEther("0.005"), 0, coinDiceCommit(alice).commit], parseEther("0.005"));
+  await arenaTx(bob, "join", [timeoutCoin, 0, randomSalt()], parseEther("0.005"));
+  const revealWindow = await publicClient.readContract({ address: arena, abi: duelArenaAbi, functionName: "revealWindow" });
+  await testClient.increaseTime({ seconds: Number(revealWindow) + 1 });
   await testClient.mine({ blocks: 1 });
-  await arenaTx(carol, "refundStuckRandomness", [refund]);
+  await arenaTx(carol, "claimRevealTimeout", [timeoutCoin]);
   await arenaTx(carol, "claimRevealTimeout", [timeoutSuit]);
-  log.info(`waktu chain dimajukan ${Number(randomnessTimeout > revealWindow ? randomnessTimeout : revealWindow) + 1} detik`);
-  log.info(`#${refund} Coinflip 0.005 ETH: randomness tidak datang → ${STATUSES[(await getDuel(refund)).status]} (dipicu pihak ketiga)`);
+  log.info(`waktu chain dimajukan ${Number(revealWindow) + 1} detik`);
+  log.info(`#${timeoutCoin} Coinflip 0.005 ETH: alice tidak reveal → pemenang ${name((await getDuel(timeoutCoin)).winner)} (dipicu pihak ketiga)`);
   log.info(`#${timeoutSuit} Suit 0.005 ETH: alice tidak reveal → pemenang ${name((await getDuel(timeoutSuit)).winner)} (claimRevealTimeout)`);
 
   // 11. Withdraw semua saldo
@@ -256,7 +263,7 @@ async function play() {
     }
   }
 
-  return { cf, dice, suit, pending, open, cancelled, draw, invalid, refund, timeoutSuit };
+  return { cf, dice, suit, pending, open, cancelled, draw, invalid, timeoutCoin, timeoutSuit };
 }
 
 async function verify(ids: Awaited<ReturnType<typeof play>>) {
@@ -286,20 +293,20 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
       winner: orNull(c.winner),
       expiresAt: c.expiresAt.toString(),
       deadline: c.deadline === 0n ? null : c.deadline.toString(),
-      requestId: c.requestId === 0n ? null : c.requestId.toString(),
-      commit: game === "Suit" ? c.commit : null,
+      commit: c.commit,
+      joinerSeed: game !== "Suit" && c.joiner !== zeroAddress ? c.joinerSeed : null,
       creatorChoice: game === "Coinflip" ? c.creatorChoice : null,
       joinerChoice: game === "Suit" && c.joiner !== zeroAddress ? c.joinerChoice : null,
     };
-    if (game !== "Suit" && (status === "Settled" || status === "Draw")) {
+    // Salt terisi saat reveal; tanpa salt = belum/tidak pernah di-reveal.
+    const revealed = c.salt !== ZERO_HASH;
+    expect.revealedSalt = revealed ? c.salt : null;
+    expect.revealedMove = revealed ? (game === "Suit" ? c.creatorChoice : NO_MOVE) : null;
+    expect.revealTimedOut = status === "Settled" && !revealed;
+    if (game !== "Suit" && revealed) {
       expect.randomWord = c.randomWord.toString();
       if (game === "Coinflip") expect.coinResult = c.creatorResult;
       if (game === "Dice") Object.assign(expect, { creatorRoll: c.creatorResult, joinerRoll: c.joinerResult });
-    }
-    if (game === "Suit") {
-      // creatorChoice di contract baru terisi saat reveal.
-      expect.revealedMove = c.creatorChoice === 0 ? null : c.creatorChoice;
-      expect.revealTimedOut = status === "Settled" && c.creatorChoice === 0;
     }
     if (status === "Settled") {
       const fee = (c.amount * 2n * BigInt(c.feeBpsAtCreate)) / 10_000n;
@@ -333,11 +340,11 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
     const hist = await api(`/players/${who}/duels?limit=100`);
     check(`/players/${label}/duels — ${hist.items.length} duel`, hist.items.length === Math.min(mine.length, 100), `chain=${mine.length}`);
 
-    const settled = mine.filter(([, c]) => c.status === 4);
+    const settled = mine.filter(([, c]) => c.status === 3);
     const exp = {
       wins: settled.filter(([, c]) => lc(c.winner) === lc(who)).length,
       losses: settled.filter(([, c]) => lc(c.winner) !== lc(who)).length,
-      draws: mine.filter(([, c]) => c.status === 5).length,
+      draws: mine.filter(([, c]) => c.status === 4).length,
     };
     const stats = await api(`/players/${who}/stats`);
     check(
@@ -363,8 +370,8 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
     check(`/players/${label}/withdrawals — ${w.items.length} penarikan`, w.items.length === Math.min(events.length, 50), `event Withdrawn=${events.length}`);
   }
 
-  // --- Suit menunggu reveal ---
-  const expPending = [...chainDuels].filter(([, c]) => c.game === 2 && c.status === 3 && lc(c.creator) === lc(alice)).map(([id]) => id.toString());
+  // --- Duel menunggu reveal (semua game) ---
+  const expPending = [...chainDuels].filter(([, c]) => c.status === 2 && lc(c.creator) === lc(alice)).map(([id]) => id.toString());
   const pend = await api(`/players/${alice}/pending-reveals?now=${now}`);
   check(
     `/players/alice/pending-reveals — ${pend.items.length} duel (#${pend.items.map((x: any) => x.id).join(", #")})`,
@@ -377,7 +384,7 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
   check(`/players/bob/pending-reveals — kosong (bob penerima, bukan pembuat)`, pendBob.items.length === 0);
 
   // --- Live results ---
-  const finished = [...chainDuels].filter(([, c]) => c.status === 4 || c.status === 5);
+  const finished = [...chainDuels].filter(([, c]) => c.status === 3 || c.status === 4);
   const recent = await api(`/results/recent`);
   check(
     `/results/recent — ${recent.items.length} hasil, terbaru #${recent.items[0]?.id}`,
@@ -388,19 +395,23 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
 
   // --- Jalur khusus ---
   const drawRow = await api(`/duels/${ids.draw}`);
+  const drawChain = chainDuels.get(ids.draw)!;
   check(
-    `/duels/${ids.draw} Dice seri: status ${drawRow.status}, angka ${drawRow.creatorRoll} vs ${drawRow.joinerRoll}, randomWord dari getDuel`,
-    drawRow.status === "Draw" && drawRow.creatorRoll === 42 && drawRow.joinerRoll === 42 && drawRow.randomWord === ((41n << 128n) | 41n).toString(),
+    `/duels/${ids.draw} Dice seri: status ${drawRow.status}, angka ${drawRow.creatorRoll} vs ${drawRow.joinerRoll}, randomWord dari salt + seed`,
+    drawRow.status === "Draw" &&
+      drawRow.creatorRoll === drawRow.joinerRoll &&
+      drawRow.randomWord === drawChain.randomWord.toString() &&
+      drawRow.randomWord === randomWordOf(drawChain.salt, drawChain.joinerSeed).toString(),
   );
   const invalidRow = await api(`/duels/${ids.invalid}`);
   check(
     `/duels/${ids.invalid} Suit move tidak valid: revealedMove ${invalidRow.revealedMove}, pemenang ${name(invalidRow.winner)}`,
     invalidRow.revealedMove === 4 && invalidRow.winner === bob.toLowerCase() && invalidRow.revealTimedOut === false,
   );
-  const refundRow = await api(`/duels/${ids.refund}`);
+  const coinTimeoutRow = await api(`/duels/${ids.timeoutCoin}`);
   check(
-    `/duels/${ids.refund} refund: status ${refundRow.status}, tanpa pemenang/fee`,
-    refundRow.status === "Refunded" && refundRow.winner === null && refundRow.fee === null && refundRow.settledTx !== null,
+    `/duels/${ids.timeoutCoin} Coinflip tanpa reveal: revealTimedOut ${coinTimeoutRow.revealTimedOut}, pemenang ${name(coinTimeoutRow.winner)}, tanpa hasil koin`,
+    coinTimeoutRow.revealTimedOut === true && coinTimeoutRow.winner === bob.toLowerCase() && coinTimeoutRow.coinResult === null,
   );
   const timeoutRow = await api(`/duels/${ids.timeoutSuit}`);
   check(
@@ -415,7 +426,7 @@ async function verify(ids: Awaited<ReturnType<typeof play>>) {
     const ofToken = [...chainDuels].filter(([, c]) => lc(c.token) === t.token);
     const expVolume = ofToken.filter(([, c]) => c.joiner !== zeroAddress).reduce((s, [, c]) => s + c.amount * 2n, 0n);
     const expFees = ofToken
-      .filter(([, c]) => c.status === 4)
+      .filter(([, c]) => c.status === 3)
       .reduce((s, [, c]) => s + (c.amount * 2n * BigInt(c.feeBpsAtCreate)) / 10_000n, 0n);
     check(
       `  ${fmt(t.token, 0n).split(" ")[1]}: ${t.duels} duel, volume ${fmt(t.token, t.volume)}, fee ${fmt(t.token, t.fees)}`,

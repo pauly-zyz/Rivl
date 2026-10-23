@@ -6,10 +6,11 @@ import type { Address } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { appConfig } from "@/lib/config";
+import { STATUSES } from "@/lib/duel";
 import { usePendingReveals } from "@/lib/indexer";
 
 /**
- * Duel Suit milik `address` yang masih menunggu reveal.
+ * Duel milik `address` (semua game) yang masih menunggu reveal.
  * Daftar kandidat dari indexer, lalu dicocokkan dengan status di chain: indexer bisa tertinggal beberapa
  * detik, dan tanpa pengecekan ini duel yang baru di-reveal masih tampil sebagai "You need to reveal".
  */
@@ -28,7 +29,7 @@ export function useAwaitingReveal(address: Address | undefined) {
           client!.readContract({ address: appConfig().arena, abi: duelArenaAbi, functionName: "getDuel", args: [BigInt(id)] }),
         ),
       );
-      return new Set(ids.filter((_, i) => duels[i]!.status === 3)); // 3 = AwaitingReveal
+      return new Set(ids.filter((_, i) => STATUSES[duels[i]!.status] === "AwaitingReveal"));
     },
   });
 

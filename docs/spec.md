@@ -3,7 +3,7 @@
 > Dokumen acuan utama untuk membangun Rivl. Simpan di `docs/spec.md`.
 > Jika ada yang bertentangan dengan dokumen ini, tanyakan dulu sebelum mengubah apa pun.
 
-**Versi:** 0.1 · 22 Oktober 2026
+**Versi:** 0.2 · 23 Oktober 2026 (Coinflip/Dice pindah dari VRF ke commit-reveal antar pemain, disetujui pemilik)
 **Pemilik:** @choky
 
 ---
@@ -47,7 +47,7 @@ Fitur berikut **hanya tampil sebagai kartu "Coming Soon"** di website. Jangan di
 | --- | --- |
 | Pembuat | Memilih HEADS (0) atau TAILS (1) |
 | Penerima | Otomatis mendapat sisi lawannya |
-| Hasil | `randomWord % 2` dari VRF |
+| Hasil | `randomWord % 2`, dengan `randomWord = keccak256(abi.encode(salt pembuat, seed penerima))` (bagian 2.5) |
 | Pemenang | Pemilik sisi yang cocok dengan hasil |
 | Seri | Tidak mungkin |
 
@@ -56,7 +56,7 @@ Fitur berikut **hanya tampil sebagai kartu "Coming Soon"** di website. Jangan di
 | | |
 | --- | --- |
 | Pembuat | Tidak memilih apa pun |
-| Hasil | Satu `randomWord` dari VRF. Angka pembuat = `uint128(randomWord) % 100 + 1`. Angka penerima = `(randomWord >> 128) % 100 + 1` |
+| Hasil | Satu `randomWord` dari commit-reveal (bagian 2.5). Angka pembuat = `uint128(randomWord) % 100 + 1`. Angka penerima = `(randomWord >> 128) % 100 + 1` |
 | Pemenang | Angka tertinggi |
 | Seri | Angka sama → kedua taruhan dikembalikan, tanpa fee |
 
@@ -71,7 +71,7 @@ Fitur berikut **hanya tampil sebagai kartu "Coming Soon"** di website. Jangan di
 | Seri | Pilihan sama → refund tanpa fee |
 | Pembuat tidak reveal tepat waktu | Penerima menang |
 | Pembuat me-reveal pilihan tidak valid | Penerima menang |
-| Randomness | Tidak memakai VRF |
+| Randomness | Tidak butuh angka acak; hasil dari pilihan kedua pemain |
 
 **Rumus commit:**
 
@@ -82,6 +82,19 @@ commit = keccak256(abi.encode(uint256 chainId, address arena, address creator, u
 - Salt: 32 byte acak, baru untuk setiap duel.
 - Commit yang sama tidak bisa dipakai dua kali.
 - Commit dihitung di browser, **bukan** lewat RPC (memanggil `computeCommit` via RPC membocorkan pilihan ke penyedia RPC).
+
+### 2.5 Randomness Coinflip dan Dice: commit-reveal antar pemain
+
+Tidak ada oracle, VRF, atau operator. Angka acak berasal dari kedua pemain:
+
+1. Pembuat membuat salt acak 32 byte dan mengirim `commit = keccak256(abi.encode(chainId, arena, creator, uint8 0, salt))` (rumus 2.3 dengan `move = 0`).
+2. Penerima bergabung dengan **seed** acak 32 byte miliknya sendiri (bukan nol), dibuat di browser.
+3. Pembuat memanggil `reveal(id, 0, salt)`. Contract mencocokkan commit, lalu `randomWord = uint256(keccak256(abi.encode(salt, seed)))` dan duel langsung selesai.
+4. Pembuat tidak reveal dalam jendela reveal → penerima menang (sama seperti Suit). Commit dengan `move ≠ 0` → penerima menang.
+
+Kenapa adil: pembuat mengunci salt sebelum seed penerima ada; penerima memilih seed tanpa tahu salt; pembuat yang menahan salt saat tahu kalah tetap kalah karena timeout.
+
+Batasan yang diketahui (sama dengan Suit): pembuat yang melihat transaksi `join` sebelum ditambang bisa mendahuluinya dengan `cancel`. Di Robinhood Chain (Arbitrum Orbit) sequencer bersifat first-come-first-served tanpa mempool publik, sehingga ini sulit; akibatnya pun hanya duel batal, bukan dana berpindah.
 
 ### 2.4 Game PvP Coming Soon
 
@@ -108,47 +121,42 @@ Kode awal sudah ada di `pvp-arena/` (dari `pvp-arena.zip`) dan dipindahkan ke `c
 
 | File | Peran |
 | --- | --- |
-| `src/DuelArena.sol` | Contract inti: escrow, 3 game, fee, klaim, timeout, admin |
-| `src/interfaces/IRandomness.sol` | `IRandomnessProvider` dan `IRandomnessConsumer`, supaya sumber randomness bisa diganti |
-| `src/randomness/ChainlinkVRFAdapter.sol` | Penghubung ke Chainlink VRF v2.5 untuk produksi |
-| `src/randomness/DevRandomnessProvider.sol` | Angka acak diatur manual. **Hanya lokal/testnet** |
+| `src/DuelArena.sol` | Contract inti: escrow, 3 game (commit-reveal), fee, klaim, timeout, admin |
+
+Adaptor Chainlink VRF dan DevRandomnessProvider dihapus di versi 0.2 karena tidak dipakai lagi.
 
 ### 3.2 Status duel
 
 ```
-None → Open → AwaitingRandomness → Settled | Draw | Refunded      (Coinflip, Dice)
-None → Open → AwaitingReveal     → Settled | Draw                 (Suit)
+None → Open → AwaitingReveal → Settled | Draw      (semua game)
 None → Open → Cancelled
 ```
 
 | Status | Artinya | Jalan keluar |
 | --- | --- | --- |
 | Open | Menunggu lawan | `join()` oleh orang lain, atau `cancel()` oleh pembuat kapan saja |
-| AwaitingRandomness | Menunggu VRF | VRF datang → selesai. Lewat batas waktu → siapa pun boleh `refundStuckRandomness()` |
-| AwaitingReveal | Menunggu pembuat Suit reveal | `revealSuit()` oleh pembuat. Lewat batas waktu → siapa pun boleh `claimRevealTimeout()`, penerima menang |
+| AwaitingReveal | Menunggu pembuat reveal | `reveal()` oleh pembuat. Lewat batas waktu → siapa pun boleh `claimRevealTimeout()`, penerima menang |
 | Settled | Ada pemenang | Selesai |
 | Draw | Seri | Selesai |
 | Cancelled | Dibatalkan pembuat | Selesai |
-| Refunded | VRF tidak datang | Selesai |
 
 ### 3.3 Fungsi publik DuelArena
 
 | Fungsi | Siapa | Keterangan |
 | --- | --- | --- |
-| `createCoinflip(token, amount, side)` | Siapa pun | `token = address(0)` untuk ETH |
-| `createDice(token, amount)` | Siapa pun | |
+| `createCoinflip(token, amount, side, commit)` | Siapa pun | `token = address(0)` untuk ETH; commit dengan `move = 0` |
+| `createDice(token, amount, commit)` | Siapa pun | Commit dengan `move = 0` |
 | `createSuit(token, amount, commit)` | Siapa pun | |
-| `join(id, move)` | Siapa pun kecuali pembuat | `move` hanya untuk Suit, isi 0 untuk game lain |
-| `revealSuit(id, move, salt)` | Pembuat | Dalam jendela reveal |
-| `claimRevealTimeout(id)` | Siapa pun | Setelah jendela reveal lewat |
-| `refundStuckRandomness(id)` | Siapa pun | Setelah batas waktu randomness lewat |
+| `join(id, move, seed)` | Siapa pun kecuali pembuat | Suit: `move` 1–3, `seed` 0. Coinflip/Dice: `move` 0, `seed` acak bukan nol |
+| `reveal(id, move, salt)` | Pembuat | Semua game, dalam jendela reveal |
+| `claimRevealTimeout(id)` | Siapa pun | Setelah jendela reveal lewat; penerima menang |
 | `cancel(id)` | Pembuat | Hanya saat status Open |
 | `withdraw(token)` | Siapa pun | Menarik seluruh saldo `claimable` untuk token itu |
 | `getDuel(id)` | View | Seluruh data duel |
 | `computeCommit(creator, move, salt)` | View | Untuk test; frontend menghitung sendiri |
 | `claimable(user, token)` | View | Saldo yang bisa ditarik |
 
-**Admin (owner = multisig):** `setFeeBps`, `setTreasury`, `setRandomnessProvider`, `setTokenConfig`, `setTimings`, `pause`, `unpause`, `rescue`.
+**Admin (owner = multisig):** `setFeeBps`, `setTreasury`, `setTokenConfig`, `setTimings(openDuration, revealWindow)`, `pause`, `unpause`, `rescue`.
 
 ### 3.4 Parameter
 
@@ -157,11 +165,10 @@ None → Open → Cancelled
 | Fee | 250 bps (2,5%) dari pot | Maks. 1.000 bps (10%), hard-coded |
 | Fee dikunci | Saat duel dibuat | Perubahan fee tidak berlaku untuk duel yang sudah ada |
 | Masa duel terbuka | 24 jam | 5 menit – 7 hari |
-| Batas waktu randomness | 1 jam | 10 menit – 1 hari |
-| Jendela reveal Suit | 1 jam | 5 menit – 1 hari |
+| Jendela reveal (semua game) | 1 jam | 5 menit – 1 hari |
 | Taruhan ETH | 0,0005 – 0,5 ETH per pemain | Diatur owner |
 | Taruhan USDG | 1 – 1.000 USDG per pemain | Diatur owner |
-| Fee saat seri / refund / batal | 0 | — |
+| Fee saat seri / batal | 0 | — |
 
 Pembayaran pemenang = `2 × taruhan − fee`. Contoh: duel 100 USDG vs 100 USDG → pemenang 195 USDG, treasury 5 USDG.
 
@@ -169,15 +176,13 @@ Pembayaran pemenang = `2 × taruhan − fee`. Contoh: duel 100 USDG vs 100 USDG 
 
 ```
 DuelCreated(id, creator, game, token, amount, creatorChoice, commit, expiresAt)
-DuelJoined(id, joiner, joinerChoice, deadline)
-RandomnessRequested(id, requestId)
-MoveRevealed(id, move)
+DuelJoined(id, joiner, joinerChoice, joinerSeed, deadline)
+Revealed(id, move, salt)
 DuelSettled(id, winner, token, payout, fee, randomWord)
 DuelDrawn(id)
 DuelCancelled(id)
-DuelRefunded(id)
 Withdrawn(user, token, amount)
-FeeUpdated, TreasuryUpdated, RandomnessProviderUpdated, TokenConfigUpdated, TimingsUpdated, Rescued
+FeeUpdated, TreasuryUpdated, TokenConfigUpdated, TimingsUpdated, Rescued
 ```
 
 ### 3.6 Aturan keamanan yang tidak boleh dilanggar
@@ -189,11 +194,11 @@ Saat memperbaiki atau mengubah contract, semua poin ini harus tetap benar. Jika 
 3. Semua fungsi yang memindahkan dana memakai `nonReentrant`.
 4. Setiap status menunggu punya batas waktu dan jalan keluar yang bisa dipicu siapa pun.
 5. Fee dikunci saat duel dibuat dan tidak bisa melebihi 10%.
-6. Pause hanya menghentikan `create*` dan `join`. Batal, reveal, timeout, refund, dan withdraw tetap jalan.
-7. `fulfillRandomness` tidak pernah revert untuk request yang tidak dikenal atau sudah selesai.
+6. Pause hanya menghentikan `create*` dan `join`. Batal, reveal, timeout, dan withdraw tetap jalan.
+7. Commit selalu terikat ke chain, contract, dan pembuat, dan tidak bisa dipakai ulang. Penerima Coinflip/Dice wajib memberi seed bukan nol.
 8. Token fee-on-transfer atau rebasing ditolak.
 9. Randomness tidak boleh berasal dari blockhash, timestamp, atau data blok lain.
-10. `DevRandomnessProvider` tidak boleh dipakai di mainnet.
+10. Tidak ada pihak selain kedua pemain (owner, operator, atau oracle) yang bisa memengaruhi hasil. Sumber randomness yang diatur operator tidak boleh dipakai di mainnet.
 11. Contract tidak upgradeable.
 
 ---
@@ -209,10 +214,9 @@ Saat memperbaiki atau mengubah contract, semua poin ini harus tetap benar. Jika 
 | Kolom | Sumber |
 | --- | --- |
 | id, game, token, amount, creator, creatorChoice, commit, createdAt, expiresAt | `DuelCreated` |
-| joiner, joinerChoice, joinedAt, deadline | `DuelJoined` |
-| requestId | `RandomnessRequested` |
-| revealedMove | `MoveRevealed` |
-| status, winner, payout, fee, randomWord, settledAt | `DuelSettled` / `DuelDrawn` / `DuelCancelled` / `DuelRefunded` |
+| joiner, joinerChoice, joinerSeed, joinedAt, deadline | `DuelJoined` |
+| revealedMove, revealedSalt | `Revealed` |
+| status, winner, payout, fee, randomWord, settledAt | `DuelSettled` / `DuelDrawn` / `DuelCancelled` |
 | txHash per tahap | Semua event |
 
 **withdrawals:** user, token, amount, txHash, timestamp.
@@ -222,7 +226,7 @@ Saat memperbaiki atau mengubah contract, semua poin ini harus tetap benar. Jika 
 - Duel terbuka: status Open dan belum kedaluwarsa; filter game, token, rentang nominal; urut terbaru atau nominal terbesar.
 - Detail satu duel.
 - Riwayat duel per alamat + statistik (menang, kalah, seri, volume).
-- Duel Suit milik alamat tertentu yang menunggu reveal.
+- Duel milik alamat tertentu (semua game) yang menunggu reveal.
 - 20 duel terakhir yang selesai (feed Live results).
 - Statistik global: volume per token, jumlah duel, total fee.
 
@@ -253,34 +257,35 @@ Next.js (App Router), TypeScript, Tailwind, wagmi v2, viem, RainbowKit, TanStack
 **`/duel/[id]` — Detail duel**
 - Status, kedua pemain, nominal, hitung mundur yang relevan.
 - Animasi: koin berputar (Coinflip), dua dadu (Dice), tangan suit (Suit). Animasi menunggu berjalan sampai hasil ada di chain, lalu berhenti di hasil sebenarnya. **Jangan pernah menampilkan hasil sebelum terkonfirmasi di chain.**
-- Tombol sesuai status dan peran: Join, Cancel, Reveal, Claim timeout, Refund.
+- Tombol sesuai status dan peran: Join, Cancel, Reveal, Claim timeout.
 - Link transaksi ke explorer. Tombol salin link untuk menantang teman.
 
 **`/me` — Duel saya**
 - Saldo klaim per token + tombol **Claim**.
-- Duel Suit yang menunggu reveal dari saya, paling atas dan mencolok.
+- Duel yang menunggu reveal dari saya (semua game), paling atas dan mencolok.
 - Riwayat dan statistik pribadi.
 - Batas pribadi: batas taruhan harian dan **Take a break** (menyembunyikan Create/Join selama periode yang dipilih). Disimpan di browser.
 
 **`/fair` — Provably fair**
-- Penjelasan VRF dan commit-reveal.
-- Alat verifikasi: masukkan ID duel → tampilkan `randomWord`, `requestId`, perhitungan hasil langkah demi langkah, dan link transaksi. Untuk Suit: commit, move, salt (setelah reveal), dan hasil hash.
+- Penjelasan commit-reveal untuk ketiga game.
+- Alat verifikasi: masukkan ID duel → tampilkan commit, seed penerima, salt (setelah reveal), `randomWord` yang dihitung ulang di browser, perhitungan hasil langkah demi langkah, dan link transaksi.
 
 **`/rules`** — Aturan setiap game, fee, batas waktu, FAQ.
 
 **`/terms` dan `/responsible-gaming`** — Placeholder yang jelas ditandai "TO BE PROVIDED BY LEGAL COUNSEL".
 
-### 5.3 Penanganan Suit di browser (kritis)
+### 5.3 Penanganan rahasia di browser, semua game (kritis)
 
-Jika salt hilang, pemain tidak bisa reveal dan kalah karena timeout. Karena itu:
+Jika salt hilang, pemain tidak bisa reveal dan kalah karena timeout. Karena itu (untuk Coinflip/Dice `move = 0`):
 
 1. Buat salt dengan `crypto.getRandomValues(new Uint8Array(32))`.
 2. Hitung commit dengan viem (`encodeAbiParameters` + `keccak256`) sesuai rumus di bagian 2.3.
 3. Simpan `{ chainId, arena, move, salt, commit }` di localStorage **sebelum** mengirim transaksi.
 4. Setelah transaksi terkonfirmasi, tambahkan `duelId` dari event `DuelCreated`.
 5. Sediakan **Back up** (unduh JSON) dan **Restore** (unggah JSON) di `/me`.
-6. Setiap kali aplikasi dibuka, cek duel Suit pengguna yang sudah diterima lawan dan tampilkan banner **"You need to reveal"** dengan hitung mundur.
+6. Setiap kali aplikasi dibuka, cek duel pengguna yang sudah diterima lawan dan tampilkan banner **"You need to reveal"** dengan hitung mundur.
 7. Unit test: hasil commit dari frontend harus sama persis dengan test vector dari Foundry.
+8. Penerima Coinflip/Dice: buat seed dengan `crypto.getRandomValues(new Uint8Array(32))`, baru untuk setiap join.
 
 ### 5.4 Kepatuhan
 
@@ -309,13 +314,12 @@ rivl/
 ├── indexer/               ← Ponder
 ├── web/                   ← Next.js
 ├── scripts/
-│   ├── dev-chain          ← Anvil + deploy contract + mock USDG + mint ke akun test
-│   └── auto-fulfill       ← otomatis memenuhi request DevRandomnessProvider
+│   └── dev-chain          ← Anvil + deploy contract + mock USDG + mint ke akun test
 ├── package.json           ← pnpm workspaces
 └── .env.example
 ```
 
-Satu perintah `pnpm dev` menjalankan chain lokal, auto-fulfill, indexer, dan web.
+Satu perintah `pnpm dev` menjalankan chain lokal, indexer, dan web.
 
 ### Variabel lingkungan
 
@@ -324,7 +328,7 @@ Satu perintah `pnpm dev` menjalankan chain lokal, auto-fulfill, indexer, dan web
 | `PRIVATE_KEY` | contracts | Jangan pernah di-commit |
 | `TREASURY`, `OWNER` | contracts | Multisig untuk produksi |
 | `USDG` | contracts, web | Alamat resmi USDG |
-| `VRF_COORDINATOR`, `VRF_KEY_HASH`, `VRF_SUB_ID`, `VRF_CONFIRMATIONS`, `VRF_CALLBACK_GAS`, `VRF_NATIVE_PAYMENT` | contracts | Kosongkan `VRF_COORDINATOR` untuk testnet dengan DevRandomnessProvider |
+| `ETH_MAX_STAKE`, `USDG_MAX_STAKE` | contracts | Opsional, batas taruhan maks. awal per pemain |
 | `ROBINHOOD_RPC`, `ROBINHOOD_TESTNET_RPC` | semua | RPC resmi |
 | `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_RPC_URL`, `NEXT_PUBLIC_EXPLORER_URL` | web | |
 | `NEXT_PUBLIC_ARENA_ADDRESS`, `NEXT_PUBLIC_USDG_ADDRESS` | web | |
@@ -332,13 +336,15 @@ Satu perintah `pnpm dev` menjalankan chain lokal, auto-fulfill, indexer, dan web
 | `NEXT_PUBLIC_X_URL` | web | Untuk tombol Notify me |
 | `BLOCKED_COUNTRIES` | web | Kode negara dipisah koma (kosong = tidak ada yang diblokir) |
 
-**Jangan mengarang** chain ID, RPC, alamat explorer, alamat USDG, atau parameter VRF. Ambil dari dokumentasi resmi dan sebutkan sumbernya, atau tanyakan.
+**Jangan mengarang** chain ID, RPC, alamat explorer, atau alamat USDG. Ambil dari dokumentasi resmi dan sebutkan sumbernya, atau tanyakan.
 
 ---
 
 ## 7. Tahap pengerjaan
 
 Kerjakan berurutan. Di akhir setiap tahap: jalankan semua test, laporkan hasil singkat, dan tunggu persetujuan sebelum lanjut.
+
+> Catatan versi 0.2: kelima tahap sudah selesai. Tabel dan prompt di bawah adalah catatan versi 0.1 (masih menyebut VRF, DevRandomnessProvider, dan auto-fulfill yang sudah dihapus). Acuan yang berlaku ada di bagian 2–6.
 
 | Tahap | Isi | Selesai jika |
 | --- | --- | --- |
@@ -449,13 +455,13 @@ perlu saya putuskan.
 
 ### Teknis
 
-- [ ] Apakah Chainlink VRF v2.5 tersedia di Robinhood Chain (mainnet dan testnet), dan berapa biaya per request?
+- [x] Apakah Chainlink VRF v2.5 tersedia di Robinhood Chain? Per 22 Okt 2026 belum; karena itu Coinflip/Dice memakai commit-reveal (2.5) sejak versi 0.2.
 - [ ] Alamat resmi USDG di Robinhood Chain dan jumlah desimalnya.
 - [ ] Chain ID, RPC, dan explorer resmi mainnet dan testnet.
 - [ ] Apakah Robinhood Chain mendukung `evm_version` cancun, atau tetap shanghai?
 - [ ] Apakah Ponder mendukung Robinhood Chain?
 
-Jika VRF belum tersedia, Suit tetap bisa diluncurkan karena tidak membutuhkan VRF. Coinflip dan Dice menunggu VRF atau provider lain yang mengimplementasikan `IRandomnessProvider`.
+Ketiga game tidak lagi bergantung pada VRF, jadi bisa diluncurkan bersama.
 
 ### Hukum
 
@@ -469,7 +475,6 @@ Jika VRF belum tersedia, Suit tetap bisa diluncurkan karena tidak membutuhkan VR
 ## 9. Sebelum mainnet
 
 - [ ] Kelima tahap selesai dan semua test lulus.
-- [ ] Adaptor VRF diuji di testnet dengan VRF sungguhan.
 - [ ] Audit contract oleh pihak ketiga.
 - [ ] Owner dan treasury dipindah ke multisig.
 - [ ] Bug bounty aktif.

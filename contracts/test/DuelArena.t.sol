@@ -5,7 +5,6 @@ import {Test} from "forge-std/Test.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 
 import {DuelArena} from "../src/DuelArena.sol";
-import {DevRandomnessProvider} from "../src/randomness/DevRandomnessProvider.sol";
 import {MockUSDG, FeeOnTransferToken, ReentrantPlayer} from "./mocks/Mocks.sol";
 
 contract DuelArenaTest is Test {
@@ -15,11 +14,12 @@ contract DuelArenaTest is Test {
     uint8 constant ROCK = 1;
     uint8 constant PAPER = 2;
     uint8 constant SCISSORS = 3;
+    uint8 constant NO_MOVE = 0;
     uint16 constant FEE_BPS = 250;
     address constant ETH = address(0);
+    bytes32 constant SEED = keccak256("bob-seed");
 
     DuelArena arena;
-    DevRandomnessProvider vrf;
     MockUSDG usdg;
 
     address owner = makeAddr("owner");
@@ -29,10 +29,8 @@ contract DuelArenaTest is Test {
     address carol = makeAddr("carol");
 
     function setUp() public {
-        vrf = new DevRandomnessProvider();
         usdg = new MockUSDG();
-        arena = new DuelArena(owner, treasury, address(vrf), FEE_BPS);
-        vrf.setConsumer(address(arena));
+        arena = new DuelArena(owner, treasury, FEE_BPS);
 
         vm.startPrank(owner);
         arena.setTokenConfig(ETH, true, 0.001 ether, 10 ether);
@@ -56,29 +54,58 @@ contract DuelArenaTest is Test {
         return (stake * 2 * FEE_BPS) / 10_000;
     }
 
-    function _coinflipEth(address who, uint256 amount, uint8 side) internal returns (uint256 id) {
-        vm.prank(who);
-        id = arena.createCoinflip{value: amount}(ETH, amount, side);
+    function _word(bytes32 salt, bytes32 seed) internal pure returns (uint256) {
+        return uint256(keccak256(abi.encode(salt, seed)));
     }
 
-    function _joinEth(address who, uint256 id, uint256 amount, uint8 move) internal {
-        vm.prank(who);
-        arena.join{value: amount}(id, move);
+    function _rolls(uint256 word) internal pure returns (uint8 creatorRoll, uint8 joinerRoll) {
+        creatorRoll = uint8(uint128(word) % 100) + 1;
+        joinerRoll = uint8((word >> 128) % 100) + 1;
     }
 
-    function _join(address who, uint256 id, uint8 move) internal {
-        vm.prank(who);
-        arena.join(id, move);
+    /// @dev Salt pertama (dari `start`) yang membuat lemparan koin = `result` untuk seed tertentu.
+    function _saltForCoin(bytes32 seed, uint8 result, uint256 start) internal pure returns (bytes32 salt) {
+        for (uint256 i = start;; i++) {
+            salt = keccak256(abi.encode("coin", i));
+            if (_word(salt, seed) % 2 == result) return salt;
+        }
     }
 
-    function _fulfill(uint256 id, uint256 word) internal {
-        vrf.fulfill(arena.getDuel(id).requestId, word);
+    /// @dev Salt pertama yang membuat Dice berakhir seri (0) / pembuat menang (1) / penerima menang (2).
+    function _saltForDice(bytes32 seed, uint8 outcome) internal pure returns (bytes32 salt) {
+        for (uint256 i;; i++) {
+            salt = keccak256(abi.encode("dice", i));
+            (uint8 c, uint8 j) = _rolls(_word(salt, seed));
+            if ((outcome == 0 && c == j) || (outcome == 1 && c > j) || (outcome == 2 && c < j)) return salt;
+        }
+    }
+
+    function _coinflipEth(address who, uint256 amount, uint8 side, bytes32 salt) internal returns (uint256 id) {
+        bytes32 commit = arena.computeCommit(who, NO_MOVE, salt);
+        vm.prank(who);
+        id = arena.createCoinflip{value: amount}(ETH, amount, side, commit);
+    }
+
+    function _diceEth(address who, uint256 amount, bytes32 salt) internal returns (uint256 id) {
+        bytes32 commit = arena.computeCommit(who, NO_MOVE, salt);
+        vm.prank(who);
+        id = arena.createDice{value: amount}(ETH, amount, commit);
     }
 
     function _suitEth(address who, uint256 amount, uint8 move, bytes32 salt) internal returns (uint256 id) {
         bytes32 commit = arena.computeCommit(who, move, salt);
         vm.prank(who);
         id = arena.createSuit{value: amount}(ETH, amount, commit);
+    }
+
+    function _joinEth(address who, uint256 id, uint256 amount, uint8 move, bytes32 seed) internal {
+        vm.prank(who);
+        arena.join{value: amount}(id, move, seed);
+    }
+
+    function _reveal(address who, uint256 id, uint8 move, bytes32 salt) internal {
+        vm.prank(who);
+        arena.reveal(id, move, salt);
     }
 
     function _status(uint256 id) internal view returns (DuelArena.Status) {
@@ -95,16 +122,20 @@ contract DuelArenaTest is Test {
     // ------------------------------------------------------------------
 
     function test_Coinflip_Eth_CreatorWins() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
-        assertEq(uint8(_status(id)), uint8(DuelArena.Status.AwaitingRandomness));
+        bytes32 salt = _saltForCoin(SEED, HEADS, 0);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        assertEq(uint8(_status(id)), uint8(DuelArena.Status.AwaitingReveal));
+        assertEq(arena.getDuel(id).joinerSeed, SEED);
 
-        _fulfill(id, 2); // genap → HEADS
+        _reveal(alice, id, NO_MOVE, salt);
 
         DuelArena.Duel memory d = arena.getDuel(id);
         assertEq(uint8(d.status), uint8(DuelArena.Status.Settled));
         assertEq(d.winner, alice);
         assertEq(d.creatorResult, HEADS);
+        assertEq(d.salt, salt);
+        assertEq(d.randomWord, _word(salt, SEED));
 
         uint256 fee = _fee(1 ether);
         assertEq(arena.claimable(alice, ETH), 2 ether - fee);
@@ -121,12 +152,16 @@ contract DuelArenaTest is Test {
     }
 
     function test_Coinflip_Usdg_JoinerWins() public {
+        bytes32 salt = _saltForCoin(SEED, TAILS, 0);
+        bytes32 commit = arena.computeCommit(alice, NO_MOVE, salt);
         vm.prank(alice);
-        uint256 id = arena.createCoinflip(address(usdg), 100e6, HEADS);
-        _join(bob, id, 0);
-        _fulfill(id, 1); // ganjil → TAILS
+        uint256 id = arena.createCoinflip(address(usdg), 100e6, HEADS, commit);
+        vm.prank(bob);
+        arena.join(id, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
 
         assertEq(arena.getDuel(id).winner, bob);
+        assertEq(arena.getDuel(id).creatorResult, TAILS);
         assertEq(arena.claimable(bob, address(usdg)), 200e6 - _fee(100e6)); // 195 USDG
         assertEq(arena.claimable(treasury, address(usdg)), 5e6);
         _assertSolvent(address(usdg));
@@ -138,52 +173,144 @@ contract DuelArenaTest is Test {
     }
 
     function test_Coinflip_RevertInvalidSide() public {
+        bytes32 commit = arena.computeCommit(alice, NO_MOVE, keccak256("s"));
         vm.prank(alice);
         vm.expectRevert(DuelArena.InvalidSide.selector);
-        arena.createCoinflip{value: 1 ether}(ETH, 1 ether, 2);
+        arena.createCoinflip{value: 1 ether}(ETH, 1 ether, 2, commit);
+    }
+
+    function test_Coinflip_RevertZeroCommit() public {
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.InvalidCommit.selector);
+        arena.createCoinflip{value: 1 ether}(ETH, 1 ether, HEADS, bytes32(0));
+    }
+
+    function test_Coinflip_RevertZeroSeed() public {
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
+        vm.prank(bob);
+        vm.expectRevert(DuelArena.InvalidSeed.selector);
+        arena.join{value: 1 ether}(id, 0, bytes32(0));
+    }
+
+    function test_Coinflip_RevertMoveOnJoin() public {
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
+        vm.prank(bob);
+        vm.expectRevert(DuelArena.InvalidMove.selector);
+        arena.join{value: 1 ether}(id, ROCK, SEED);
+    }
+
+    function test_Coinflip_RevealTimeoutJoinerWins() public {
+        // Pembuat tahu dia kalah setelah melihat seed, lalu tidak reveal: penerima tetap menang.
+        bytes32 salt = _saltForCoin(SEED, TAILS, 0);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+
+        vm.expectRevert(DuelArena.TooEarly.selector);
+        arena.claimRevealTimeout(id);
+
+        vm.warp(block.timestamp + arena.revealWindow() + 1);
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.RevealWindowClosed.selector);
+        arena.reveal(id, NO_MOVE, salt);
+
+        vm.prank(carol);
+        arena.claimRevealTimeout(id);
+        assertEq(arena.getDuel(id).winner, bob);
+        assertEq(arena.claimable(bob, ETH), 2 ether - _fee(1 ether));
+        _assertSolvent(ETH);
+    }
+
+    function test_Coinflip_RevertWrongSalt() public {
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("benar"));
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.InvalidReveal.selector);
+        arena.reveal(id, NO_MOVE, keccak256("salah"));
+    }
+
+    function test_Coinflip_NonZeroCommittedMoveLoses() public {
+        // Commit dibuat dengan move ≠ 0: hash cocok, tapi nilainya tidak valid untuk Coinflip → pembuat kalah.
+        bytes32 salt = keccak256("s");
+        bytes32 commit = arena.computeCommit(alice, 7, salt);
+        vm.prank(alice);
+        uint256 id = arena.createCoinflip{value: 1 ether}(ETH, 1 ether, HEADS, commit);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, 7, salt);
+        assertEq(arena.getDuel(id).winner, bob);
+        _assertSolvent(ETH);
+    }
+
+    function test_Coinflip_OnlyCreatorCanReveal() public {
+        bytes32 salt = keccak256("s");
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        vm.prank(bob);
+        vm.expectRevert(DuelArena.NotCreator.selector);
+        arena.reveal(id, NO_MOVE, salt);
+    }
+
+    function test_Coinflip_SeedChangesOutcome() public pure {
+        // Hasil bergantung pada seed penerima, jadi pembuat tidak bisa menentukan hasil sendirian.
+        bytes32 salt = keccak256("tetap");
+        bool sawHeads;
+        bool sawTails;
+        for (uint256 i; i < 16; i++) {
+            uint256 w = uint256(keccak256(abi.encode(salt, keccak256(abi.encode(i)))));
+            if (w % 2 == 0) sawHeads = true;
+            else sawTails = true;
+        }
+        assertTrue(sawHeads && sawTails);
     }
 
     // ------------------------------------------------------------------
     // Dice
     // ------------------------------------------------------------------
 
-    function _diceWord(uint256 creatorRoll, uint256 joinerRoll) internal pure returns (uint256) {
-        // angka = (bagian % 100) + 1
-        return ((joinerRoll - 1) << 128) | (creatorRoll - 1);
-    }
-
     function test_Dice_HigherRollWins() public {
-        vm.prank(alice);
-        uint256 id = arena.createDice{value: 1 ether}(ETH, 1 ether);
-        _joinEth(bob, id, 1 ether, 0);
-        _fulfill(id, _diceWord(42, 87));
+        bytes32 salt = _saltForDice(SEED, 2);
+        uint256 id = _diceEth(alice, 1 ether, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
 
+        (uint8 c, uint8 j) = _rolls(_word(salt, SEED));
         DuelArena.Duel memory d = arena.getDuel(id);
-        assertEq(d.creatorResult, 42);
-        assertEq(d.joinerResult, 87);
+        assertEq(d.creatorResult, c);
+        assertEq(d.joinerResult, j);
+        assertLt(c, j);
         assertEq(d.winner, bob);
         assertEq(arena.claimable(bob, ETH), 2 ether - _fee(1 ether));
         _assertSolvent(ETH);
     }
 
-    function test_Dice_TieRefundsWithoutFee() public {
-        vm.prank(alice);
-        uint256 id = arena.createDice{value: 1 ether}(ETH, 1 ether);
-        _joinEth(bob, id, 1 ether, 0);
-        _fulfill(id, _diceWord(50, 50));
+    function test_Dice_CreatorHigherWins() public {
+        bytes32 salt = _saltForDice(SEED, 1);
+        uint256 id = _diceEth(alice, 1 ether, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
+        assertEq(arena.getDuel(id).winner, alice);
+        _assertSolvent(ETH);
+    }
 
-        assertEq(uint8(_status(id)), uint8(DuelArena.Status.Draw));
+    function test_Dice_TieRefundsWithoutFee() public {
+        bytes32 salt = _saltForDice(SEED, 0);
+        uint256 id = _diceEth(alice, 1 ether, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
+
+        DuelArena.Duel memory d = arena.getDuel(id);
+        assertEq(uint8(d.status), uint8(DuelArena.Status.Draw));
+        assertEq(d.creatorResult, d.joinerResult);
         assertEq(arena.claimable(alice, ETH), 1 ether);
         assertEq(arena.claimable(bob, ETH), 1 ether);
         assertEq(arena.claimable(treasury, ETH), 0);
         _assertSolvent(ETH);
     }
 
-    function testFuzz_Dice_RollsInRange(uint256 word) public {
-        vm.prank(alice);
-        uint256 id = arena.createDice{value: 1 ether}(ETH, 1 ether);
-        _joinEth(bob, id, 1 ether, 0);
-        _fulfill(id, word);
+    function testFuzz_Dice_RollsInRange(bytes32 salt, bytes32 seed) public {
+        vm.assume(seed != bytes32(0));
+        uint256 id = _diceEth(alice, 1 ether, salt);
+        _joinEth(bob, id, 1 ether, 0, seed);
+        _reveal(alice, id, NO_MOVE, salt);
 
         DuelArena.Duel memory d = arena.getDuel(id);
         assertGe(d.creatorResult, 1);
@@ -200,13 +327,13 @@ contract DuelArenaTest is Test {
     function test_Suit_CreatorWins_RockBeatsScissors() public {
         bytes32 salt = keccak256("salt-1");
         uint256 id = _suitEth(alice, 1 ether, ROCK, salt);
-        _joinEth(bob, id, 1 ether, SCISSORS);
+        _joinEth(bob, id, 1 ether, SCISSORS, 0);
         assertEq(uint8(_status(id)), uint8(DuelArena.Status.AwaitingReveal));
 
-        vm.prank(alice);
-        arena.revealSuit(id, ROCK, salt);
+        _reveal(alice, id, ROCK, salt);
 
         assertEq(arena.getDuel(id).winner, alice);
+        assertEq(arena.getDuel(id).randomWord, 0);
         assertEq(arena.claimable(alice, ETH), 2 ether - _fee(1 ether));
         _assertSolvent(ETH);
     }
@@ -214,30 +341,31 @@ contract DuelArenaTest is Test {
     function test_Suit_JoinerWins_PaperBeatsRock() public {
         bytes32 salt = keccak256("salt-2");
         uint256 id = _suitEth(alice, 1 ether, ROCK, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
-
-        vm.prank(alice);
-        arena.revealSuit(id, ROCK, salt);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
+        _reveal(alice, id, ROCK, salt);
         assertEq(arena.getDuel(id).winner, bob);
     }
 
     function test_Suit_ScissorsBeatPaper() public {
         bytes32 salt = keccak256("salt-3");
         uint256 id = _suitEth(alice, 1 ether, SCISSORS, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
-
-        vm.prank(alice);
-        arena.revealSuit(id, SCISSORS, salt);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
+        _reveal(alice, id, SCISSORS, salt);
         assertEq(arena.getDuel(id).winner, alice);
+    }
+
+    function test_Suit_SeedIgnored() public {
+        bytes32 salt = keccak256("salt-3b");
+        uint256 id = _suitEth(alice, 1 ether, SCISSORS, salt);
+        _joinEth(bob, id, 1 ether, PAPER, SEED);
+        assertEq(arena.getDuel(id).joinerSeed, bytes32(0));
     }
 
     function test_Suit_DrawRefunds() public {
         bytes32 salt = keccak256("salt-4");
         uint256 id = _suitEth(alice, 1 ether, PAPER, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
-
-        vm.prank(alice);
-        arena.revealSuit(id, PAPER, salt);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
+        _reveal(alice, id, PAPER, salt);
 
         assertEq(uint8(_status(id)), uint8(DuelArena.Status.Draw));
         assertEq(arena.claimable(alice, ETH), 1 ether);
@@ -247,38 +375,36 @@ contract DuelArenaTest is Test {
 
     function test_Suit_RevertWrongSalt() public {
         uint256 id = _suitEth(alice, 1 ether, ROCK, keccak256("benar"));
-        _joinEth(bob, id, 1 ether, PAPER);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
 
         vm.prank(alice);
         vm.expectRevert(DuelArena.InvalidReveal.selector);
-        arena.revealSuit(id, ROCK, keccak256("salah"));
+        arena.reveal(id, ROCK, keccak256("salah"));
     }
 
     function test_Suit_RevertChangedMove() public {
         bytes32 salt = keccak256("salt-5");
         uint256 id = _suitEth(alice, 1 ether, ROCK, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
 
         // Pembuat mencoba mengganti pilihan setelah melihat lawan.
         vm.prank(alice);
         vm.expectRevert(DuelArena.InvalidReveal.selector);
-        arena.revealSuit(id, SCISSORS, salt);
+        arena.reveal(id, SCISSORS, salt);
     }
 
     function test_Suit_InvalidCommittedMoveLoses() public {
         bytes32 salt = keccak256("salt-6");
         uint256 id = _suitEth(alice, 1 ether, 4, salt); // pilihan tidak valid
-        _joinEth(bob, id, 1 ether, ROCK);
-
-        vm.prank(alice);
-        arena.revealSuit(id, 4, salt);
+        _joinEth(bob, id, 1 ether, ROCK, 0);
+        _reveal(alice, id, 4, salt);
         assertEq(arena.getDuel(id).winner, bob);
     }
 
     function test_Suit_RevealTimeoutJoinerWins() public {
         bytes32 salt = keccak256("salt-7");
         uint256 id = _suitEth(alice, 1 ether, ROCK, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
 
         vm.expectRevert(DuelArena.TooEarly.selector);
         arena.claimRevealTimeout(id);
@@ -287,7 +413,7 @@ contract DuelArenaTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(DuelArena.RevealWindowClosed.selector);
-        arena.revealSuit(id, ROCK, salt);
+        arena.reveal(id, ROCK, salt);
 
         vm.prank(carol); // siapa pun boleh memicu
         arena.claimRevealTimeout(id);
@@ -299,11 +425,11 @@ contract DuelArenaTest is Test {
     function test_Suit_OnlyCreatorCanReveal() public {
         bytes32 salt = keccak256("salt-8");
         uint256 id = _suitEth(alice, 1 ether, ROCK, salt);
-        _joinEth(bob, id, 1 ether, PAPER);
+        _joinEth(bob, id, 1 ether, PAPER, 0);
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.NotCreator.selector);
-        arena.revealSuit(id, ROCK, salt);
+        arena.reveal(id, ROCK, salt);
     }
 
     function test_Suit_RevertInvalidJoinMove() public {
@@ -311,24 +437,28 @@ contract DuelArenaTest is Test {
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.InvalidMove.selector);
-        arena.join{value: 1 ether}(id, 0);
+        arena.join{value: 1 ether}(id, 0, 0);
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.InvalidMove.selector);
-        arena.join{value: 1 ether}(id, 4);
+        arena.join{value: 1 ether}(id, 4, 0);
     }
 
-    function test_Suit_RevertReusedCommit() public {
+    function test_Commit_RevertReusedAcrossGames() public {
         bytes32 salt = keccak256("salt-10");
-        _suitEth(alice, 1 ether, ROCK, salt);
+        _coinflipEth(alice, 1 ether, HEADS, salt);
 
-        bytes32 commit = arena.computeCommit(alice, ROCK, salt);
+        bytes32 commit = arena.computeCommit(alice, NO_MOVE, salt);
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.CommitAlreadyUsed.selector);
+        arena.createDice{value: 1 ether}(ETH, 1 ether, commit);
+
         vm.prank(alice);
         vm.expectRevert(DuelArena.CommitAlreadyUsed.selector);
         arena.createSuit{value: 1 ether}(ETH, 1 ether, commit);
     }
 
-    function test_Suit_CommitBoundToCreator() public {
+    function test_Suit_CommitBoundToCreator() public view {
         // Bob menyalin commit Alice untuk membuat duelnya sendiri: hash tidak akan pernah cocok untuknya.
         bytes32 salt = keccak256("salt-11");
         bytes32 aliceCommit = arena.computeCommit(alice, ROCK, salt);
@@ -340,7 +470,7 @@ contract DuelArenaTest is Test {
     // ------------------------------------------------------------------
 
     function test_Cancel_RefundsCreator() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.NotCreator.selector);
@@ -354,12 +484,12 @@ contract DuelArenaTest is Test {
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.InvalidStatus.selector);
-        arena.join{value: 1 ether}(id, 0);
+        arena.join{value: 1 ether}(id, 0, SEED);
     }
 
     function test_Cancel_RevertAfterJoined() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
+        _joinEth(bob, id, 1 ether, 0, SEED);
 
         vm.prank(alice);
         vm.expectRevert(DuelArena.InvalidStatus.selector);
@@ -367,12 +497,12 @@ contract DuelArenaTest is Test {
     }
 
     function test_Join_RevertExpired() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
         vm.warp(block.timestamp + arena.openDuration() + 1);
 
         vm.prank(bob);
         vm.expectRevert(DuelArena.DuelExpired.selector);
-        arena.join{value: 1 ether}(id, 0);
+        arena.join{value: 1 ether}(id, 0, SEED);
 
         // Pembuat tetap bisa menarik dananya.
         vm.prank(alice);
@@ -381,87 +511,55 @@ contract DuelArenaTest is Test {
     }
 
     function test_Join_RevertOwnDuel() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
         vm.prank(alice);
         vm.expectRevert(DuelArena.CannotJoinOwnDuel.selector);
-        arena.join{value: 1 ether}(id, 0);
+        arena.join{value: 1 ether}(id, 0, SEED);
     }
 
     function test_Join_RevertWrongValue() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
         vm.prank(bob);
         vm.expectRevert(DuelArena.WrongEthValue.selector);
-        arena.join{value: 0.5 ether}(id, 0);
+        arena.join{value: 0.5 ether}(id, 0, SEED);
     }
 
     function test_Join_RevertSecondJoiner() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, keccak256("s"));
+        _joinEth(bob, id, 1 ether, 0, SEED);
 
         vm.prank(carol);
         vm.expectRevert(DuelArena.InvalidStatus.selector);
-        arena.join{value: 1 ether}(id, 0);
+        arena.join{value: 1 ether}(id, 0, SEED);
     }
 
     function test_Join_WorksAfterConfigTightened() public {
-        uint256 id = _coinflipEth(alice, 5 ether, HEADS);
+        uint256 id = _coinflipEth(alice, 5 ether, HEADS, keccak256("s"));
         vm.prank(owner);
         arena.setTokenConfig(ETH, true, 0.001 ether, 1 ether); // max diturunkan
-        _joinEth(bob, id, 5 ether, 0); // duel lama tetap bisa diterima
-        assertEq(uint8(_status(id)), uint8(DuelArena.Status.AwaitingRandomness));
+        _joinEth(bob, id, 5 ether, 0, SEED); // duel lama tetap bisa diterima
+        assertEq(uint8(_status(id)), uint8(DuelArena.Status.AwaitingReveal));
     }
 
-    // ------------------------------------------------------------------
-    // Randomness
-    // ------------------------------------------------------------------
+    function test_Reveal_RevertTwice() public {
+        bytes32 salt = keccak256("s");
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
 
-    function test_Randomness_OnlyProvider() public {
-        vm.prank(carol);
-        vm.expectRevert(DuelArena.OnlyRandomnessProvider.selector);
-        arena.fulfillRandomness(1, 1);
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.InvalidStatus.selector);
+        arena.reveal(id, NO_MOVE, salt);
+        vm.expectRevert(DuelArena.InvalidStatus.selector);
+        arena.claimRevealTimeout(id);
     }
 
-    function test_Randomness_StuckRefund() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
-        uint256 reqId = arena.getDuel(id).requestId;
-
-        vm.expectRevert(DuelArena.TooEarly.selector);
-        arena.refundStuckRandomness(id);
-
-        vm.warp(block.timestamp + arena.randomnessTimeout() + 1);
-        vm.prank(carol);
-        arena.refundStuckRandomness(id);
-
-        assertEq(uint8(_status(id)), uint8(DuelArena.Status.Refunded));
-        assertEq(arena.claimable(alice, ETH), 1 ether);
-        assertEq(arena.claimable(bob, ETH), 1 ether);
-        assertEq(arena.claimable(treasury, ETH), 0);
-
-        // Randomness yang datang terlambat diabaikan tanpa revert.
-        vrf.fulfill(reqId, 2);
-        assertEq(uint8(_status(id)), uint8(DuelArena.Status.Refunded));
-        assertEq(arena.claimable(alice, ETH), 1 ether);
-        _assertSolvent(ETH);
-    }
-
-    function test_Randomness_LateButBeforeRefundStillSettles() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
-        vm.warp(block.timestamp + arena.randomnessTimeout() + 1);
-        _fulfill(id, 0);
-        assertEq(arena.getDuel(id).winner, alice);
-    }
-
-    function test_Randomness_DoubleFulfillIgnored() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, id, 1 ether, 0);
-        uint256 reqId = arena.getDuel(id).requestId;
-
-        vrf.fulfill(reqId, 0); // alice menang
-        vrf.fulfill(reqId, 1); // diabaikan
-        assertEq(arena.getDuel(id).winner, alice);
-        assertEq(arena.claimable(alice, ETH), 2 ether - _fee(1 ether));
+    function test_Reveal_RevertBeforeJoin() public {
+        bytes32 salt = keccak256("s");
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
+        vm.prank(alice);
+        vm.expectRevert(DuelArena.InvalidStatus.selector);
+        arena.reveal(id, NO_MOVE, salt);
     }
 
     // ------------------------------------------------------------------
@@ -469,25 +567,29 @@ contract DuelArenaTest is Test {
     // ------------------------------------------------------------------
 
     function test_Create_RevertStakeOutOfRange() public {
+        bytes32 c1 = arena.computeCommit(alice, NO_MOVE, keccak256("a"));
+        bytes32 c2 = arena.computeCommit(alice, NO_MOVE, keccak256("b"));
         vm.prank(alice);
         vm.expectRevert(DuelArena.StakeOutOfRange.selector);
-        arena.createCoinflip{value: 0.0001 ether}(ETH, 0.0001 ether, HEADS);
+        arena.createCoinflip{value: 0.0001 ether}(ETH, 0.0001 ether, HEADS, c1);
 
         vm.prank(alice);
         vm.expectRevert(DuelArena.StakeOutOfRange.selector);
-        arena.createCoinflip(address(usdg), 20_000e6, HEADS);
+        arena.createCoinflip(address(usdg), 20_000e6, HEADS, c2);
     }
 
     function test_Create_RevertTokenNotAllowed() public {
+        bytes32 c = arena.computeCommit(alice, NO_MOVE, keccak256("a"));
         vm.prank(alice);
         vm.expectRevert(DuelArena.TokenNotAllowed.selector);
-        arena.createCoinflip(address(0xBEEF), 1e6, HEADS);
+        arena.createCoinflip(address(0xBEEF), 1e6, HEADS, c);
     }
 
     function test_Create_RevertEthSentWithToken() public {
+        bytes32 c = arena.computeCommit(alice, NO_MOVE, keccak256("a"));
         vm.prank(alice);
         vm.expectRevert(DuelArena.WrongEthValue.selector);
-        arena.createCoinflip{value: 1 ether}(address(usdg), 100e6, HEADS);
+        arena.createCoinflip{value: 1 ether}(address(usdg), 100e6, HEADS, c);
     }
 
     function test_Create_RevertFeeOnTransferToken() public {
@@ -495,10 +597,11 @@ contract DuelArenaTest is Test {
         vm.prank(owner);
         arena.setTokenConfig(address(fot), true, 1e18, 1000e18);
         fot.mint(alice, 100e18);
+        bytes32 c = arena.computeCommit(alice, NO_MOVE, keccak256("a"));
         vm.startPrank(alice);
         fot.approve(address(arena), type(uint256).max);
         vm.expectRevert(DuelArena.UnsupportedToken.selector);
-        arena.createCoinflip(address(fot), 10e18, HEADS);
+        arena.createCoinflip(address(fot), 10e18, HEADS, c);
         vm.stopPrank();
     }
 
@@ -507,11 +610,12 @@ contract DuelArenaTest is Test {
     // ------------------------------------------------------------------
 
     function test_Fee_LockedAtCreation() public {
-        uint256 id = _coinflipEth(alice, 1 ether, HEADS);
+        bytes32 salt = keccak256("s");
+        uint256 id = _coinflipEth(alice, 1 ether, HEADS, salt);
         vm.prank(owner);
         arena.setFeeBps(1_000); // naik ke 10% setelah duel dibuat
-        _joinEth(bob, id, 1 ether, 0);
-        _fulfill(id, 0);
+        _joinEth(bob, id, 1 ether, 0, SEED);
+        _reveal(alice, id, NO_MOVE, salt);
         assertEq(arena.claimable(treasury, ETH), _fee(1 ether)); // tetap 2,5%
     }
 
@@ -519,6 +623,28 @@ contract DuelArenaTest is Test {
         vm.prank(owner);
         vm.expectRevert(DuelArena.FeeTooHigh.selector);
         arena.setFeeBps(1_001);
+
+        vm.expectRevert(DuelArena.FeeTooHigh.selector);
+        new DuelArena(owner, treasury, 1_001);
+    }
+
+    function test_Constructor_RevertZeroTreasury() public {
+        vm.expectRevert(DuelArena.ZeroAddress.selector);
+        new DuelArena(owner, address(0), FEE_BPS);
+    }
+
+    function test_Timings() public {
+        vm.prank(owner);
+        arena.setTimings(2 hours, 30 minutes);
+        assertEq(arena.openDuration(), 2 hours);
+        assertEq(arena.revealWindow(), 30 minutes);
+
+        vm.startPrank(owner);
+        vm.expectRevert(DuelArena.InvalidConfig.selector);
+        arena.setTimings(1 minutes, 30 minutes);
+        vm.expectRevert(DuelArena.InvalidConfig.selector);
+        arena.setTimings(2 hours, 2 days);
+        vm.stopPrank();
     }
 
     function test_Admin_OnlyOwner() public {
@@ -528,7 +654,9 @@ contract DuelArenaTest is Test {
         vm.expectRevert();
         arena.setTreasury(carol);
         vm.expectRevert();
-        arena.setRandomnessProvider(carol);
+        arena.setTimings(2 hours, 30 minutes);
+        vm.expectRevert();
+        arena.setTokenConfig(ETH, false, 0, 0);
         vm.expectRevert();
         arena.pause();
         vm.expectRevert();
@@ -537,33 +665,40 @@ contract DuelArenaTest is Test {
     }
 
     function test_Pause_BlocksNewDuelsButNotExits() public {
-        uint256 openId = _coinflipEth(alice, 1 ether, HEADS);
-        uint256 liveId = _coinflipEth(alice, 1 ether, HEADS);
-        _joinEth(bob, liveId, 1 ether, 0);
+        bytes32 salt = keccak256("live");
+        uint256 openId = _coinflipEth(alice, 1 ether, HEADS, keccak256("open"));
+        uint256 liveId = _coinflipEth(alice, 1 ether, HEADS, salt);
+        uint256 lateId = _coinflipEth(alice, 1 ether, HEADS, keccak256("late"));
+        _joinEth(bob, liveId, 1 ether, 0, SEED);
+        _joinEth(bob, lateId, 1 ether, 0, SEED);
 
         vm.prank(owner);
         arena.pause();
 
+        bytes32 c = arena.computeCommit(alice, NO_MOVE, keccak256("new"));
         vm.prank(alice);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        arena.createDice{value: 1 ether}(ETH, 1 ether);
+        arena.createDice{value: 1 ether}(ETH, 1 ether, c);
 
         vm.prank(bob);
         vm.expectRevert(Pausable.EnforcedPause.selector);
-        arena.join{value: 1 ether}(openId, 0);
+        arena.join{value: 1 ether}(openId, 0, SEED);
 
-        // Jalan keluar tetap terbuka.
+        // Jalan keluar tetap terbuka: batal, reveal, timeout, withdraw.
         vm.prank(alice);
         arena.cancel(openId);
-        _fulfill(liveId, 0);
+        _reveal(alice, liveId, NO_MOVE, salt);
+        vm.warp(block.timestamp + arena.revealWindow() + 1);
+        arena.claimRevealTimeout(lateId);
         vm.prank(alice);
         arena.withdraw(ETH);
         _assertSolvent(ETH);
     }
 
     function test_Rescue_OnlyExcess() public {
+        bytes32 c = arena.computeCommit(alice, NO_MOVE, keccak256("a"));
         vm.prank(alice);
-        arena.createCoinflip(address(usdg), 500e6, HEADS); // 500 USDG terkunci
+        arena.createCoinflip(address(usdg), 500e6, HEADS, c); // 500 USDG terkunci
 
         usdg.mint(address(arena), 7e6); // terkirim tidak sengaja
 
@@ -606,14 +741,17 @@ contract DuelArenaTest is Test {
     // Fuzz: konservasi dana
     // ------------------------------------------------------------------
 
-    function testFuzz_Coinflip_FundsConserved(uint256 amount, uint256 word, uint8 side) public {
+    function testFuzz_Coinflip_FundsConserved(uint256 amount, bytes32 salt, bytes32 seed, uint8 side) public {
         amount = bound(amount, 1e6, 10_000e6);
         side = uint8(bound(side, 0, 1));
+        vm.assume(seed != bytes32(0));
 
+        bytes32 commit = arena.computeCommit(alice, NO_MOVE, salt);
         vm.prank(alice);
-        uint256 id = arena.createCoinflip(address(usdg), amount, side);
-        _join(bob, id, 0);
-        _fulfill(id, word);
+        uint256 id = arena.createCoinflip(address(usdg), amount, side, commit);
+        vm.prank(bob);
+        arena.join(id, 0, seed);
+        _reveal(alice, id, NO_MOVE, salt);
 
         address token = address(usdg);
         uint256 total = arena.claimable(alice, token) + arena.claimable(bob, token) + arena.claimable(treasury, token);
@@ -623,7 +761,7 @@ contract DuelArenaTest is Test {
 
         address winner = arena.getDuel(id).winner;
         assertTrue(winner == alice || winner == bob);
-        assertEq(winner == alice, (word % 2) == side);
+        assertEq(winner == alice, (_word(salt, seed) % 2) == side);
     }
 
     function testFuzz_Suit_AllOutcomes(uint8 creatorMove, uint8 joinerMove) public {
@@ -632,9 +770,8 @@ contract DuelArenaTest is Test {
         bytes32 salt = keccak256(abi.encode(creatorMove, joinerMove));
 
         uint256 id = _suitEth(alice, 1 ether, creatorMove, salt);
-        _joinEth(bob, id, 1 ether, joinerMove);
-        vm.prank(alice);
-        arena.revealSuit(id, creatorMove, salt);
+        _joinEth(bob, id, 1 ether, joinerMove, 0);
+        _reveal(alice, id, creatorMove, salt);
 
         DuelArena.Duel memory d = arena.getDuel(id);
         if (creatorMove == joinerMove) {

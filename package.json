@@ -9,7 +9,6 @@
   "scripts": {
     "dev": "pnpm --filter @rivl/scripts dev",
     "dev:chain": "pnpm --filter @rivl/scripts dev:chain",
-    "auto-fulfill": "pnpm --filter @rivl/scripts auto-fulfill",
     "demo": "pnpm --filter @rivl/scripts demo",
     "indexer": "pnpm --filter @rivl/indexer dev",
     "test:contracts": "pnpm --filter @rivl/contracts test",

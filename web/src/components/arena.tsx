@@ -34,7 +34,7 @@ export function CoinFlip({ phase, result, creatorSide }: { phase: Phase; result?
       </div>
       <p className="h-7 text-sm font-semibold text-muted" aria-live="polite">
         {phase === "waiting" ? (
-          "Flipping… waiting for verifiable randomness"
+          "Flipping… waiting for the creator to reveal"
         ) : phase === "result" ? (
           <span className="font-display text-xl font-black text-ink">{SIDE_NAMES[result!]}</span>
         ) : (
@@ -66,7 +66,7 @@ export function DiceDuel({ phase, creatorRoll, joinerRoll }: { phase: Phase; cre
         <Die value={phase === "result" ? joinerRoll : undefined} phase={phase} side="joiner" win={winner === "joiner"} />
       </div>
       <p className="h-6 text-sm font-semibold text-muted" aria-live="polite">
-        {phase === "waiting" ? "Rolling… waiting for verifiable randomness" : winner === "draw" ? "Same number — draw" : ""}
+        {phase === "waiting" ? "Rolling… waiting for the creator to reveal" : winner === "draw" ? "Same number — draw" : ""}
       </p>
     </div>
   );

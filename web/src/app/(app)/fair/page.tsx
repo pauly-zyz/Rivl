@@ -1,11 +1,10 @@
 "use client";
 
 import { duelArenaAbi } from "@rivl/contracts/abi";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
-import { decodeFunctionData, parseAbi, toHex, type Hex } from "viem";
-import { usePublicClient, useReadContract } from "wagmi";
+import { toHex } from "viem";
+import { useReadContract } from "wagmi";
 
 import { Button, Card, SectionTitle, TxLink } from "@/components/ui";
 import { findToken, useArenaInfo } from "@/hooks/useArena";
@@ -13,7 +12,7 @@ import { appConfig } from "@/lib/config";
 import { diceRolls, GAMES, isZero, potBreakdown, sameAddress, SIDE_NAMES, STATUS_LABEL, STATUSES, type ChainDuel } from "@/lib/duel";
 import { formatAmount, shortAddress } from "@/lib/format";
 import { useIndexedDuel, type IndexerDuel } from "@/lib/indexer";
-import { computeCommit, MOVE_NAMES, suitWinner } from "@/lib/suit";
+import { computeCommit, MOVE_NAMES, randomWordOf, suitWinner } from "@/lib/suit";
 
 export default function FairPage() {
   return (
@@ -21,20 +20,29 @@ export default function FairPage() {
       <header>
         <h1 className="font-display text-3xl font-black sm:text-5xl">Provably fair</h1>
         <p className="mt-3 text-muted">
-          Nobody — not your rival, not Rivl — can choose or see a result in advance. You don&apos;t have to trust us:
-          every number below comes from the chain, and this page recomputes each result in your browser.
+          Nobody — not your rival, not Rivl — can choose or see a result in advance. There is no oracle and no operator:
+          every result comes from the two players alone. You don&apos;t have to trust us: every number below comes from
+          the chain, and this page recomputes each result in your browser.
         </p>
       </header>
 
-      <RandomnessSource />
-
       <section className="grid gap-3 sm:grid-cols-2">
         <Card className="p-4 text-sm">
-          <h2 className="font-bold">Coinflip & Dice: verifiable randomness</h2>
+          <h2 className="font-bold">Coinflip & Dice: two secrets, one result</h2>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
-            <li>When the rival joins, the contract requests a random number. Both stakes are already locked.</li>
-            <li>The VRF service returns one random word with a cryptographic proof, checked on chain before delivery.</li>
-            <li>The contract turns that word into the result with a fixed formula, shown step by step below.</li>
+            <li>
+              The creator&apos;s browser picks a random 32-byte salt and posts only its hash:{" "}
+              <code className="break-all">keccak256(abi.encode(chainId, arena, creator, 0, salt))</code>.
+            </li>
+            <li>The rival joins with a fresh random 32-byte seed of their own, in the open.</li>
+            <li>
+              The creator reveals the salt. The contract checks it against the hash, then computes{" "}
+              <code className="break-all">randomWord = keccak256(abi.encode(salt, seed))</code>.
+            </li>
+            <li>
+              The creator locked the salt before seeing the seed; the rival chose the seed without knowing the salt. If the
+              creator doesn&apos;t reveal in time, the rival wins — so hiding a losing result doesn&apos;t help.
+            </li>
           </ol>
         </Card>
         <Card className="p-4 text-sm">
@@ -46,6 +54,7 @@ export default function FairPage() {
             </li>
             <li>The rival picks a move in the open.</li>
             <li>The creator reveals move and salt; the contract rehashes them and rejects anything that doesn&apos;t match.</li>
+            <li>If the creator doesn&apos;t reveal in time, the rival wins.</li>
           </ol>
         </Card>
       </section>
@@ -54,51 +63,6 @@ export default function FairPage() {
         <Verifier />
       </Suspense>
     </article>
-  );
-}
-
-/** Jenis sumber randomness yang dipasang di arena saat ini. */
-function RandomnessSource() {
-  const { arena } = appConfig();
-  const client = usePublicClient();
-  const { data: provider } = useReadContract({ address: arena, abi: duelArenaAbi, functionName: "randomnessProvider" });
-
-  const { data: kind } = useQuery({
-    queryKey: ["randomness-kind", provider],
-    enabled: !!provider && !!client,
-    queryFn: async () => {
-      const tryRead = (signature: string, functionName: string) =>
-        client!
-          .readContract({ address: provider!, abi: parseAbi([signature]), functionName })
-          .then(() => true)
-          .catch(() => false);
-      if (await tryRead("function coordinator() view returns (address)", "coordinator")) return "vrf" as const;
-      if (await tryRead("function lastRequestId() view returns (uint256)", "lastRequestId")) return "dev" as const;
-      return "other" as const;
-    },
-  });
-
-  if (!provider || !kind) return null;
-  return (
-    <section data-testid="randomness-source" data-kind={kind}>
-      {kind === "dev" ? (
-        <div className="rounded-xl border-2 border-red bg-red-deep p-4 text-sm">
-          <p className="font-bold">Development randomness</p>
-          <p className="mt-1 text-ink/85">
-            This deployment uses DevRandomnessProvider ({shortAddress(provider)}): the operator supplies the random
-            numbers. Results here are <b>not</b> provably fair. This is only for local and test networks.
-          </p>
-        </div>
-      ) : (
-        <Card className="p-4 text-sm">
-          <p className="font-bold">{kind === "vrf" ? "Chainlink VRF v2.5" : "Custom randomness provider"}</p>
-          <p className="mt-1 text-muted">
-            Randomness provider: <span className="font-mono">{provider}</span>
-            {kind === "vrf" && ". The VRF coordinator verifies each proof on chain before the number reaches the duel."}
-          </p>
-        </Card>
-      )}
-    </section>
   );
 }
 
@@ -138,25 +102,10 @@ type Check = { label: ReactNode; value?: ReactNode; ok?: boolean; tx?: string | 
 
 function Verification({ id }: { id: bigint }) {
   const { arena, chain } = appConfig();
-  const client = usePublicClient();
   const { tokens } = useArenaInfo();
   const { data, isLoading } = useReadContract({ address: arena, abi: duelArenaAbi, functionName: "getDuel", args: [id] });
   const { data: indexed } = useIndexedDuel(id);
   const duel = data as ChainDuel | undefined;
-
-  // Suit: salt hanya ada di calldata transaksi reveal (tidak disimpan di storage contract).
-  const { data: reveal } = useQuery({
-    queryKey: ["reveal-calldata", indexed?.revealTx],
-    enabled: !!indexed?.revealTx && !!client,
-    staleTime: Infinity,
-    queryFn: async () => {
-      const tx = await client!.getTransaction({ hash: indexed!.revealTx! });
-      const decoded = decodeFunctionData({ abi: duelArenaAbi, data: tx.input });
-      if (decoded.functionName !== "revealSuit") throw new Error("Not a reveal transaction");
-      const [, move, salt] = decoded.args as readonly [bigint, number, Hex];
-      return { move, salt };
-    },
-  });
 
   if (isLoading) return <p className="mt-4 text-muted">Loading duel #{id.toString()}…</p>;
   if (!duel || duel.status === 0) return <p className="mt-4 text-muted" data-testid="verify-not-found">Duel #{id.toString()} doesn&apos;t exist.</p>;
@@ -167,10 +116,8 @@ function Verification({ id }: { id: bigint }) {
   const fmt = (v: bigint) => (token ? `${formatAmount(v, token.decimals)} ${token.symbol}` : v.toString());
   const finished = status === "Settled" || status === "Draw";
 
-  const checks: Check[] =
-    game === "Suit"
-      ? suitChecks(duel, indexed, reveal, { chainId: chain.id, arena })
-      : randomChecks(duel, indexed, game);
+  const ctx = { chainId: chain.id, arena };
+  const checks: Check[] = game === "Suit" ? suitChecks(duel, indexed, ctx) : randomChecks(duel, indexed, game, ctx);
 
   if (status === "Settled") {
     const { fee, payout } = potBreakdown(duel.amount, duel.feeBpsAtCreate);
@@ -229,19 +176,66 @@ function Verification({ id }: { id: bigint }) {
   );
 }
 
-function randomChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, game: "Coinflip" | "Dice"): Check[] {
-  const status = STATUSES[d.status]!;
-  const checks: Check[] = [];
-  if (isZero(d.joiner)) return [{ label: "Waiting for a rival. Randomness is requested only when someone joins." }];
+const ZERO_HASH = `0x${"0".repeat(64)}`;
+const isZeroHash = (h: string) => h.toLowerCase() === ZERO_HASH;
+type Ctx = { chainId: number; arena: `0x${string}` };
 
-  checks.push({ label: <>Rival joined; randomness requested (request #{d.requestId.toString()})</>, tx: ix?.joinedTx });
-  if (status !== "Settled" && status !== "Draw") {
-    checks.push({ label: status === "Refunded" ? "Randomness didn't arrive in time — both stakes refunded." : "Waiting for the random word…" });
+/** Commit pembuat + (setelah lawan join) tanda timeout atau langkah reveal yang sama untuk semua game. */
+function commonChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, joinedLabel: ReactNode): { checks: Check[]; done: boolean } {
+  const status = STATUSES[d.status]!;
+  const checks: Check[] = [{ label: "Creator's commit (hides the secret)", value: d.commit, tx: ix?.createdTx }];
+  if (isZero(d.joiner)) return { checks: [...checks, { label: "Waiting for a rival." }], done: true };
+  checks.push({ label: joinedLabel, tx: ix?.joinedTx });
+  if (status === "AwaitingReveal") {
+    return { checks: [...checks, { label: "Waiting for the creator to reveal. The salt stays secret until then." }], done: true };
+  }
+  // Selesai tanpa reveal (salt tidak pernah terisi) = claimRevealTimeout.
+  if (status === "Settled" && isZeroHash(d.salt)) {
+    checks.push({
+      label: <>No reveal before the deadline → rival wins by timeout ({shortAddress(d.joiner)})</>,
+      ok: sameAddress(d.winner, d.joiner),
+      tx: ix?.settledTx,
+    });
+    return { checks, done: true };
+  }
+  return { checks, done: false };
+}
+
+function commitCheck(d: ChainDuel, move: number, ctx: Ctx): Check {
+  const recomputed = computeCommit({ ...ctx, creator: d.creator, move, salt: d.salt });
+  return {
+    label: <>keccak256(abi.encode({ctx.chainId}, arena, creator, {move}, salt)) equals the commit</>,
+    value: recomputed,
+    ok: recomputed.toLowerCase() === d.commit.toLowerCase(),
+  };
+}
+
+function randomChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, game: "Coinflip" | "Dice", ctx: Ctx): Check[] {
+  const status = STATUSES[d.status]!;
+  const { checks, done } = commonChecks(d, ix, <>Rival joined with their random seed</>);
+  if (!isZero(d.joiner) && !isZeroHash(d.joinerSeed)) checks[1] = { ...checks[1]!, value: d.joinerSeed };
+  if (done) return checks;
+
+  // Nilai move di reveal: 0 untuk Coinflip/Dice. Selain 0 = commit tidak valid → penerima menang.
+  const move = ix?.revealedMove ?? 0;
+  checks.push({ label: "Creator's revealed salt", value: d.salt, tx: ix?.revealTx });
+  checks.push(commitCheck(d, move, ctx));
+  if (move !== 0) {
+    checks.push({
+      label: <>Committed value {move} isn&apos;t valid for {game} → rival wins ({shortAddress(d.joiner)})</>,
+      ok: status === "Settled" && sameAddress(d.winner, d.joiner),
+      tx: ix?.settledTx,
+    });
     return checks;
   }
 
-  const w = d.randomWord;
-  checks.push({ label: "Random word delivered on chain", value: <>{w.toString()}<br />{toHex(w, { size: 32 })}</>, tx: ix?.settledTx });
+  const w = randomWordOf(d.salt, d.joinerSeed);
+  checks.push({
+    label: "randomWord = keccak256(abi.encode(salt, seed))",
+    value: <>{w.toString()}<br />{toHex(w, { size: 32 })}</>,
+    ok: w === d.randomWord,
+    tx: ix?.settledTx,
+  });
 
   if (game === "Coinflip") {
     const r = Number(w % 2n);
@@ -249,7 +243,7 @@ function randomChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, game: "C
     const creatorWins = r === d.creatorChoice;
     checks.push({
       label: <>Creator called {SIDE_NAMES[d.creatorChoice]} → {creatorWins ? "creator" : "rival"} wins ({shortAddress(creatorWins ? d.creator : d.joiner)})</>,
-      ok: sameAddress(d.winner, creatorWins ? d.creator : d.joiner),
+      ok: status === "Settled" && sameAddress(d.winner, creatorWins ? d.creator : d.joiner),
     });
     return checks;
   }
@@ -275,52 +269,26 @@ function randomChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, game: "C
   return checks;
 }
 
-function suitChecks(
-  d: ChainDuel,
-  ix: IndexerDuel | null | undefined,
-  reveal: { move: number; salt: Hex } | undefined,
-  ctx: { chainId: number; arena: `0x${string}` },
-): Check[] {
+function suitChecks(d: ChainDuel, ix: IndexerDuel | null | undefined, ctx: Ctx): Check[] {
   const status = STATUSES[d.status]!;
-  const checks: Check[] = [{ label: "Creator's commit (hides the move)", value: d.commit, tx: ix?.createdTx }];
-  if (isZero(d.joiner)) return [...checks, { label: "Waiting for a rival." }];
+  const { checks, done } = commonChecks(d, ix, <>Rival&apos;s move (public): <b>{MOVE_NAMES[d.joinerChoice]}</b></>);
+  if (done) return checks;
 
-  checks.push({ label: <>Rival&apos;s move (public): <b>{MOVE_NAMES[d.joinerChoice]}</b></>, tx: ix?.joinedTx });
-
-  if (status === "AwaitingReveal") return [...checks, { label: "Waiting for the creator to reveal. The salt stays secret until then." }];
-  if (!ix) return [...checks, { label: "Loading transactions…" }];
-  // Tanpa transaksi reveal, duel Suit hanya bisa selesai lewat claimRevealTimeout.
-  if (status === "Settled" && !ix.revealTx) {
-    return [
-      ...checks,
-      {
-        label: <>No reveal before the deadline → rival wins by timeout ({shortAddress(d.joiner)})</>,
-        ok: sameAddress(d.winner, d.joiner),
-        tx: ix?.settledTx,
-      },
-    ];
-  }
-  if (!reveal) return [...checks, { label: "Loading the reveal transaction…" }];
-
-  const recomputed = computeCommit({ ...ctx, creator: d.creator, move: reveal.move, salt: reveal.salt });
+  const move = d.creatorChoice;
   checks.push({
-    label: <>Revealed move <b>{MOVE_NAMES[reveal.move] ?? `invalid (${reveal.move})`}</b> and salt (from the reveal transaction)</>,
-    value: reveal.salt,
+    label: <>Revealed move <b>{MOVE_NAMES[move] ?? `invalid (${move})`}</b> and salt</>,
+    value: d.salt,
     tx: ix?.revealTx,
   });
-  checks.push({
-    label: <>keccak256(abi.encode({ctx.chainId}, arena, creator, {reveal.move}, salt)) equals the commit</>,
-    value: recomputed,
-    ok: recomputed.toLowerCase() === d.commit.toLowerCase(),
-  });
-  const outcome = suitWinner(reveal.move, d.joinerChoice);
+  checks.push(commitCheck(d, move, ctx));
+  const outcome = suitWinner(move, d.joinerChoice);
   checks.push({
     label:
       outcome === "draw" ? (
         <>Same move → draw, stakes returned with no fee</>
       ) : (
         <>
-          {MOVE_NAMES[reveal.move] ?? "Invalid move"} vs {MOVE_NAMES[d.joinerChoice]} → {outcome === "creator" ? "creator" : "rival"} wins (
+          {MOVE_NAMES[move] ?? "Invalid move"} vs {MOVE_NAMES[d.joinerChoice]} → {outcome === "creator" ? "creator" : "rival"} wins (
           {shortAddress(outcome === "creator" ? d.creator : d.joiner)})
         </>
       ),

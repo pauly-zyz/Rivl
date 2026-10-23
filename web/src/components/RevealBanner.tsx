@@ -9,7 +9,7 @@ import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { formatDuration } from "@/lib/format";
 
 /**
- * "You need to reveal" (docs/spec.md 5.3 langkah 6): setiap kali aplikasi dibuka, cek duel Suit milik
+ * "You need to reveal" (docs/spec.md 5.3 langkah 6): setiap kali aplikasi dibuka, cek duel milik
  * pengguna yang sudah diterima lawan dan tampilkan hitung mundur.
  */
 export function RevealBanner() {
@@ -30,13 +30,13 @@ export function RevealBanner() {
           return (
             <div key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <p className="font-bold">
-                You need to reveal <span className="text-muted">· Suit #{d.id}</span>
+                You need to reveal <span className="text-muted">· {d.game === "Dice" ? "Dice Duel" : d.game} #{d.id}</span>
               </p>
               <p className="tabular text-sm text-ink/80">
                 {left === undefined ? "…" : `${formatDuration(left)} left — if you don't reveal, your rival wins.`}
               </p>
               {!hasSecret && (
-                <p className="text-sm text-red">Your move isn&apos;t saved in this browser. Restore your backup.</p>
+                <p className="text-sm text-red">Your secret isn&apos;t saved in this browser. Restore your backup.</p>
               )}
               <Link
                 href={hasSecret ? `/duel/${d.id}` : "/me#backup"}

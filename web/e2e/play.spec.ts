@@ -9,7 +9,7 @@ import { connect, deployment, getDuel, pageErrors, playerPage, takeCreatedPages 
  * Setiap hasil yang tampil di halaman dicocokkan dengan getDuel() di chain.
  */
 
-const STATUS = ["None", "Open", "AwaitingRandomness", "AwaitingReveal", "Settled", "Draw", "Cancelled", "Refunded"];
+const STATUS = ["None", "Open", "AwaitingReveal", "Settled", "Draw", "Cancelled"];
 const SHOTS = "e2e-screens";
 
 const d = deployment();
@@ -44,7 +44,7 @@ test.afterEach(async () => {
 
 
 
-test("Coinflip dengan ETH: buat, terima, hasil dari randomness on-chain", async ({ browser }) => {
+test("Coinflip dengan ETH: buat, terima, reveal, hasil dari rahasia kedua pemain", async ({ browser }) => {
   const alice = await playerPage(browser, ALICE);
   const bob = await playerPage(browser, BOB);
   await alice.goto("/");
@@ -61,6 +61,16 @@ test("Coinflip dengan ETH: buat, terima, hasil dari randomness on-chain", async 
   await expect(bob.getByTestId(`duel-card-${id}`)).toBeVisible();
 
   await joinDuel(bob, id, { token: "ETH" });
+  await expectStatus(bob, "AwaitingReveal");
+  await expect(bob.getByTestId("coin")).toHaveAttribute("data-phase", "waiting");
+
+  // Rahasia Coinflip tersimpan di browser alice dengan commit yang sama di chain (move 0).
+  const chainCommit = (await getDuel(id)).commit;
+  const stored = await alice.evaluate(() => JSON.parse(localStorage.getItem("rivl:suit-secrets:v1") ?? "[]"));
+  expect(stored.find((s: { commit: string }) => s.commit === chainCommit.toLowerCase())).toMatchObject({ move: 0, duelId: id.toString() });
+
+  await alice.goto(`/duel/${id}`);
+  await alice.getByRole("button", { name: "Reveal & flip" }).click();
   const phases = await assertNoEarlyResult(alice, id, "coin");
   await expectStatus(alice, "Settled");
   await expectStatus(bob, "Settled");
@@ -85,7 +95,14 @@ test("Dice Duel dengan USDG: approve, buat, terima, angka sama dengan chain", as
 
   const id = await createDuel(alice, { game: "Dice Duel", token: "USDG", amount: "5" });
   await joinDuel(bob, id, { token: "USDG" });
+  await expectStatus(bob, "AwaitingReveal");
   await bob.screenshot({ path: `${SHOTS}/03-dice-rolling.png`, fullPage: true });
+
+  // Banner reveal juga muncul untuk Dice.
+  await alice.goto("/");
+  await expect(alice.getByTestId("reveal-banner")).toContainText(`Dice Duel #${id}`);
+  await alice.goto(`/duel/${id}`);
+  await alice.getByRole("button", { name: "Reveal & roll" }).click();
   await assertNoEarlyResult(bob, id, "dice");
   await expectStatus(bob, /Settled|Draw/);
 
@@ -169,20 +186,20 @@ test("Suit: backup di satu browser, restore di browser lain, lalu reveal", async
   const downloadPromise = alice.waitForEvent("download");
   await alice.getByRole("button", { name: "Back up (download)" }).click();
   const file = await (await downloadPromise).path();
-  expect(JSON.parse(readFileSync(file, "utf8")).type).toBe("rivl-suit-secrets");
+  expect(JSON.parse(readFileSync(file, "utf8")).type).toBe("rivl-suit-secrets"); // format tetap, supaya backup lama bisa dipulihkan
 
   // Browser baru (localStorage kosong): tidak bisa reveal sampai backup dipulihkan.
   const fresh = await playerPage(browser, ALICE, { width: 375, height: 812 });
   await fresh.goto(`/duel/${id}`);
   await connect(fresh);
-  await expect(fresh.getByText("Your move for this duel isn't saved in this browser")).toBeVisible();
+  await expect(fresh.getByText("Your secret for this duel isn't saved in this browser")).toBeVisible();
   await expect(fresh.getByTestId("reveal-banner")).toContainText("Restore your backup");
   await expect(fresh.getByRole("button", { name: "Reveal my move" })).toHaveCount(0);
   await fresh.screenshot({ path: `${SHOTS}/08-mobile-secret-missing.png`, fullPage: true });
 
   await fresh.goto("/me");
   await fresh.getByTestId("restore-input").setInputFiles(file);
-  await expect(fresh.getByText(/Restored \d+ moves?\./)).toBeVisible();
+  await expect(fresh.getByText(/Restored \d+ secrets?\./)).toBeVisible();
   await fresh.screenshot({ path: `${SHOTS}/09-mobile-me-restored.png`, fullPage: true });
 
   await fresh.goto(`/duel/${id}`);

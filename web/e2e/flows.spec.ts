@@ -55,6 +55,7 @@ test("Suit timeout: pembuat tidak reveal, penantang mengklaim kemenangan", async
   const chain = await getDuel(id);
   expect(chain.winner.toLowerCase()).toBe(BOB.toLowerCase());
   expect(chain.creatorChoice).toBe(0); // tidak pernah di-reveal
+  expect(chain.salt).toBe(`0x${"0".repeat(64)}`);
 
   // Pembuat melihat kekalahannya; banner reveal untuk duel ini hilang.
   await alice.goto(`/duel/${id}`);

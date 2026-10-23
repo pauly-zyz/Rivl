@@ -3,7 +3,7 @@
  *
  * 1. forge build
  * 2. Jalankan Anvil (chain ID 31337, default Anvil)
- * 3. Deploy DevRandomnessProvider + MockUSDG (6 desimal) + DuelArena
+ * 3. Deploy MockUSDG (6 desimal) + DuelArena
  * 4. Atur tokenConfig (batas taruhan sesuai docs/spec.md bagian 3.4)
  * 5. Isi ETH dan USDG ke akun test
  * 6. Tulis alamat ke deployments/local.json
@@ -183,11 +183,9 @@ async function deploy(rpcUrl: string, extraAccounts: Address[]): Promise<LocalDe
     if (receipt.status !== "success") throw new Error(`${functionName} gagal`);
   }
 
-  const dev = await deployContract("DevRandomnessProvider.sol", "DevRandomnessProvider");
   const usdg = await deployContract("Mocks.sol", "MockUSDG");
-  const arena = await deployContract("DuelArena.sol", "DuelArena", [owner, treasury, dev.address, FEE_BPS]);
+  const arena = await deployContract("DuelArena.sol", "DuelArena", [owner, treasury, FEE_BPS]);
 
-  await send(dev.address, dev.abi, "setConsumer", [arena.address]);
   await send(arena.address, arena.abi, "setTokenConfig", ["0x0000000000000000000000000000000000000000", true, ETH_MIN_STAKE, ETH_MAX_STAKE]);
   await send(arena.address, arena.abi, "setTokenConfig", [usdg.address, true, USDG_MIN_STAKE, USDG_MAX_STAKE]);
   log.info("tokenConfig: ETH 0,0005–0,5 · USDG 1–1.000 per pemain · fee 2,5%");
@@ -203,11 +201,11 @@ async function deploy(rpcUrl: string, extraAccounts: Address[]): Promise<LocalDe
   return {
     chainId: LOCAL_CHAIN_ID,
     rpcUrl,
-    startBlock: Number(dev.blockNumber),
+    startBlock: Number(usdg.blockNumber),
     deployedAt: new Date().toISOString(),
     owner,
     treasury,
-    contracts: { arena: arena.address, devRandomness: dev.address, usdg: usdg.address },
+    contracts: { arena: arena.address, usdg: usdg.address },
     usdgDecimals: USDG_DECIMALS,
     testAccounts,
   };

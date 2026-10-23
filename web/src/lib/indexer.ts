@@ -14,7 +14,7 @@ export type IndexerDuel = {
   amount: string;
   creator: Address;
   creatorChoice: number | null;
-  commit: Hex | null;
+  commit: Hex;
   createdAt: string;
   expiresAt: string;
   createdTx: Hex;
@@ -23,8 +23,9 @@ export type IndexerDuel = {
   joinedAt: string | null;
   deadline: string | null;
   joinedTx: Hex | null;
-  requestId: string | null;
+  joinerSeed: Hex | null;
   revealedMove: number | null;
+  revealedSalt: Hex | null;
   revealTx: Hex | null;
   status: Status;
   winner: Address | null;
@@ -44,7 +45,6 @@ export type PlayerStats = {
   wins: number;
   losses: number;
   draws: number;
-  refunded: number;
   cancelled: number;
   active: number;
   byToken: { token: Address; wins: number; losses: number; draws: number; volume: string; payoutWon: string; net: string }[];

@@ -6,7 +6,7 @@ di halaman resminya sebelum deploy**.
 
 | # | Pertanyaan | Status | Jawaban singkat |
 |---|---|---|---|
-| 1 | Chainlink VRF v2.5 di Robinhood Chain, biaya per request | ❌ Belum tersedia | Tidak ada di daftar jaringan VRF v2.5. Biaya belum bisa dihitung. |
+| 1 | Chainlink VRF v2.5 di Robinhood Chain, biaya per request | ✅ Tidak dibutuhkan lagi | VRF belum tersedia, jadi sejak spec 0.2 (23 Okt 2026) Coinflip/Dice memakai commit-reveal antar pemain. |
 | 2 | Alamat resmi USDG dan desimal | ✅ Ditemukan | Mainnet `0x5fc5…d168`, testnet `0x7E95…802F`, 6 desimal. |
 | 3 | Chain ID, RPC, explorer resmi | ✅ Ditemukan | Mainnet 4663, testnet 46630 (detail di bawah). |
 | 4 | `evm_version` cancun atau shanghai | 🟡 Kemungkinan besar cancun | Arbitrum Nitro dengan ArbOS jauh di atas 20; tetap pakai shanghai sampai diuji. |
@@ -26,11 +26,10 @@ di halaman resminya sebelum deploy**.
 - Biaya per request belum bisa dihitung. Di jaringan yang didukung, biayanya = gas callback × harga gas + premium
   Chainlink. Settle DuelArena lewat VRF memakai ~116k gas (dari `test/ChainlinkVRFAdapter.t.sol`).
 
-**Dampak (sesuai spec):** Suit bisa diluncurkan tanpa VRF. Coinflip dan Dice harus menunggu VRF atau provider lain
-yang mengimplementasikan `IRandomnessProvider`. DevRandomnessProvider hanya untuk testnet.
-
-**Yang perlu diputuskan:** tunggu VRF, minta Chainlink menambahkan Robinhood Chain, atau pakai provider lain
-(mis. randomness dari jaringan lain lewat CCIP, atau oracle VRF pihak ketiga). Semuanya perlu dinilai keamanannya.
+**Keputusan (23 Okt 2026, disetujui pemilik):** Coinflip dan Dice tidak lagi memakai VRF. Angka acak =
+`keccak256(abi.encode(salt pembuat, seed penerima))` dengan commit-reveal; pembuat yang tidak reveal kalah karena
+timeout (docs/spec.md 2.5). Adaptor VRF, DevRandomnessProvider, dan auto-fulfill dihapus. Ketiga game bisa
+diluncurkan tanpa layanan pihak ketiga. Catatan biaya VRF di atas hanya tersisa sebagai riwayat.
 
 ## 2. USDG
 

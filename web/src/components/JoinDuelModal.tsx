@@ -15,7 +15,9 @@ import { useTx } from "@/hooks/useTx";
 import { appConfig } from "@/lib/config";
 import { GAMES, potBreakdown, sameAddress, SIDE_NAMES, STATUSES, type ChainDuel } from "@/lib/duel";
 import { formatAmount, shortAddress } from "@/lib/format";
-import { MOVE_NAMES, MOVES, type Move } from "@/lib/suit";
+import { MOVE_NAMES, MOVES, randomSeed, type Move } from "@/lib/suit";
+
+const ZERO_HASH = `0x${"0".repeat(64)}` as const;
 
 export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -72,7 +74,8 @@ export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean
         address: arena,
         abi: duelArenaAbi,
         functionName: "join",
-        args: [id, game === "Suit" ? move! : 0],
+        // Coinflip/Dice: seed acak baru dari browser penerima, ikut menentukan hasil (docs/spec.md 2.1–2.2).
+        args: game === "Suit" ? [id, move!, ZERO_HASH] : [id, 0, randomSeed()],
         value: token?.isEth ? duel.amount : undefined,
       });
       onClose();
@@ -105,6 +108,12 @@ export function JoinDuelModal({ id, open, onClose }: { id: bigint; open: boolean
             </p>
           )}
           {game === "Dice" && <p className="text-sm text-muted">You both roll 1–100. Highest number wins; a tie refunds both.</p>}
+          {game !== "Suit" && (
+            <p className="text-xs text-muted">
+              Your browser adds a fresh random number when you join. Your rival locked in their secret before you joined
+              and can&apos;t change it, so neither of you can pick the result. If they don&apos;t reveal in time, you win.
+            </p>
+          )}
           {game === "Suit" && (
             <div>
               <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-muted">Your move</h3>

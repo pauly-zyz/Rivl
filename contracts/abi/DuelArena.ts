@@ -14,11 +14,6 @@ export const duelArenaAbi = [
         "internalType": "address"
       },
       {
-        "name": "provider_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
         "name": "feeBps_",
         "type": "uint16",
         "internalType": "uint16"
@@ -61,6 +56,19 @@ export const duelArenaAbi = [
         "name": "",
         "type": "uint16",
         "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NO_MOVE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "stateMutability": "view"
@@ -240,6 +248,11 @@ export const duelArenaAbi = [
         "name": "side",
         "type": "uint8",
         "internalType": "uint8"
+      },
+      {
+        "name": "commit",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -264,6 +277,11 @@ export const duelArenaAbi = [
         "name": "amount",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "commit",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -338,24 +356,6 @@ export const duelArenaAbi = [
   },
   {
     "type": "function",
-    "name": "fulfillRandomness",
-    "inputs": [
-      {
-        "name": "requestId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "randomWord",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "getDuel",
     "inputs": [
       {
@@ -396,17 +396,22 @@ export const duelArenaAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "requestId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "randomWord",
             "type": "uint256",
             "internalType": "uint256"
           },
           {
             "name": "commit",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "joinerSeed",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "salt",
             "type": "bytes32",
             "internalType": "bytes32"
           },
@@ -483,6 +488,11 @@ export const duelArenaAbi = [
         "name": "move",
         "type": "uint8",
         "internalType": "uint8"
+      },
+      {
+        "name": "seed",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [],
@@ -562,68 +572,10 @@ export const duelArenaAbi = [
   },
   {
     "type": "function",
-    "name": "randomnessProvider",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IRandomnessProvider"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "randomnessTimeout",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "refundStuckRandomness",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "renounceOwnership",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "requestToDuel",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -645,7 +597,7 @@ export const duelArenaAbi = [
   },
   {
     "type": "function",
-    "name": "revealSuit",
+    "name": "reveal",
     "inputs": [
       {
         "name": "id",
@@ -694,28 +646,10 @@ export const duelArenaAbi = [
   },
   {
     "type": "function",
-    "name": "setRandomnessProvider",
-    "inputs": [
-      {
-        "name": "newProvider",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setTimings",
     "inputs": [
       {
         "name": "openDuration_",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "randomnessTimeout_",
         "type": "uint64",
         "internalType": "uint64"
       },
@@ -967,23 +901,16 @@ export const duelArenaAbi = [
         "internalType": "uint8"
       },
       {
+        "name": "joinerSeed",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
         "name": "deadline",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "DuelRefunded",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1046,25 +973,6 @@ export const duelArenaAbi = [
   },
   {
     "type": "event",
-    "name": "MoveRevealed",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "move",
-        "type": "uint8",
-        "indexed": false,
-        "internalType": "uint8"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "OwnershipTransferStarted",
     "inputs": [
       {
@@ -1116,38 +1024,6 @@ export const duelArenaAbi = [
   },
   {
     "type": "event",
-    "name": "RandomnessProviderUpdated",
-    "inputs": [
-      {
-        "name": "provider",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "RandomnessRequested",
-    "inputs": [
-      {
-        "name": "id",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "requestId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "Rescued",
     "inputs": [
       {
@@ -1173,16 +1049,35 @@ export const duelArenaAbi = [
   },
   {
     "type": "event",
+    "name": "Revealed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "move",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TimingsUpdated",
     "inputs": [
       {
         "name": "openDuration",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      },
-      {
-        "name": "randomnessTimeout",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
@@ -1295,11 +1190,6 @@ export const duelArenaAbi = [
   },
   {
     "type": "error",
-    "name": "DuplicateRequest",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "EnforcedPause",
     "inputs": []
   },
@@ -1340,6 +1230,11 @@ export const duelArenaAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidSeed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidSide",
     "inputs": []
   },
@@ -1356,11 +1251,6 @@ export const duelArenaAbi = [
   {
     "type": "error",
     "name": "NothingToWithdraw",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "OnlyRandomnessProvider",
     "inputs": []
   },
   {

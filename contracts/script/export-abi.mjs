@@ -15,11 +15,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "abi");
 const check = process.argv.includes("--check");
 
-// DevRandomnessProvider dipakai scripts/auto-fulfill (HANYA lokal/testnet).
-const CONTRACTS = [
-  { name: "DuelArena", source: "DuelArena.sol", constName: "duelArenaAbi" },
-  { name: "DevRandomnessProvider", source: "DevRandomnessProvider.sol", constName: "devRandomnessProviderAbi" },
-];
+const CONTRACTS = [{ name: "DuelArena", source: "DuelArena.sol", constName: "duelArenaAbi" }];
 
 const HEADER = "// File ini dibuat otomatis oleh contracts/script/export-abi.mjs. Jangan diedit manual.\n";
 const files = {};

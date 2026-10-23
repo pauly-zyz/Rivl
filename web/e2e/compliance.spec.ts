@@ -205,8 +205,7 @@ test("/fair: verifikasi Coinflip, Dice, dan Suit dari data on-chain", async ({ b
 
   const page = await playerPage(browser, ALICE);
   await page.goto("/fair");
-  await expect(page.getByTestId("randomness-source")).toHaveAttribute("data-kind", "dev");
-  await expect(page.getByTestId("randomness-source")).toContainText("not");
+  await expect(page.getByText("There is no oracle and no operator")).toBeVisible();
 
   // Lewat form.
   await page.getByLabel("Duel ID").fill(coin.toString());
@@ -214,6 +213,8 @@ test("/fair: verifikasi Coinflip, Dice, dan Suit dari data on-chain", async ({ b
   await page.waitForURL(`**/fair?id=${coin}`);
   await expect(page.getByTestId("verify-verdict")).toHaveAttribute("data-verified", "true");
   await expect(page.getByTestId("verify-steps")).toContainText("randomWord % 2");
+  await expect(page.getByTestId("verify-steps")).toContainText("keccak256(abi.encode(salt, seed))");
+  await expect(page.getByTestId("verify-steps")).not.toContainText("mismatch");
 
   for (const [id, text] of [
     [dice, "lower 128 bits % 100 + 1"],

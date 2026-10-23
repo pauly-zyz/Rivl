@@ -27,7 +27,7 @@ export default function MePage() {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
         <h1 className="font-display text-3xl font-black">My duels</h1>
-        <p className="mt-3 text-muted">Connect your wallet to see your duels, claim winnings and back up your Suit moves.</p>
+        <p className="mt-3 text-muted">Connect your wallet to see your duels, claim winnings and back up your duel secrets.</p>
         <div className="mt-6 flex justify-center">
           <ConnectButton />
         </div>
@@ -75,11 +75,11 @@ function PendingReveals({ address }: { address: Address }) {
           const hasSecret = !!find(d.commit);
           return (
             <li key={d.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-bg/60 px-3 py-2">
-              <span className="font-bold">Suit #{d.id}</span>
+              <span className="font-bold">{d.game === "Dice" ? "Dice Duel" : d.game} #{d.id}</span>
               <span className="tabular text-sm text-muted">
                 {left === undefined ? "…" : left > 0 ? `${formatDuration(left)} left` : "Window closed"}
               </span>
-              {!hasSecret && <Badge tone="red">Move not in this browser</Badge>}
+              {!hasSecret && <Badge tone="red">Secret not in this browser</Badge>}
               <Link href={`/duel/${d.id}`} className="ml-auto rounded-lg bg-red px-3 py-1.5 text-sm font-bold text-white">
                 {hasSecret && (left ?? 1) > 0 ? "Reveal now" : "Open"}
               </Link>
@@ -107,7 +107,7 @@ function Claimable({ address }: { address: Address }) {
       <div className="mt-2">
         <TxNotice state={tx.state} />
       </div>
-      <p className="mt-2 text-xs text-muted">Winnings, draws, refunds and cancelled stakes collect here until you claim them.</p>
+      <p className="mt-2 text-xs text-muted">Winnings, draws and cancelled stakes collect here until you claim them.</p>
     </section>
   );
 }
@@ -154,7 +154,7 @@ function SuitBackup({ address }: { address: Address }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `rivl-suit-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `rivl-secrets-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -164,7 +164,7 @@ function SuitBackup({ address }: { address: Address }) {
       const { restored, invalid } = restore(await file.text());
       setMessage({
         tone: invalid ? "error" : "ok",
-        text: `Restored ${restored} move${restored === 1 ? "" : "s"}.${invalid ? ` Skipped ${invalid} invalid entr${invalid === 1 ? "y" : "ies"}.` : ""}`,
+        text: `Restored ${restored} secret${restored === 1 ? "" : "s"}.${invalid ? ` Skipped ${invalid} invalid entr${invalid === 1 ? "y" : "ies"}.` : ""}`,
       });
     } catch (err) {
       setMessage({ tone: "error", text: err instanceof Error ? err.message : "Could not read this file." });
@@ -173,17 +173,17 @@ function SuitBackup({ address }: { address: Address }) {
 
   return (
     <section id="backup">
-      <SectionTitle>Suit moves backup</SectionTitle>
+      <SectionTitle>Duel secrets backup</SectionTitle>
       <Card className="p-4">
         <p className="text-sm text-ink/90">
-          Your hidden Suit moves live only in this browser. If you clear it or switch devices without a backup, you
-          can&apos;t reveal — and you lose those duels.
+          The secrets for your duels (and your hidden Suit moves) live only in this browser. If you clear it or switch
+          devices without a backup, you can&apos;t reveal — and you lose those duels.
         </p>
         <p className="tabular mt-3 text-sm text-muted" data-testid="secret-count">
-          {mine.length} move{mine.length === 1 ? "" : "s"} saved for this wallet
+          {mine.length} secret{mine.length === 1 ? "" : "s"} saved for this wallet
           {secrets.length !== mine.length ? ` (${secrets.length} total in this browser)` : ""}.
         </p>
-        {!available && <p className="mt-2 text-sm text-red">This browser blocks local storage. Suit moves can&apos;t be saved here.</p>}
+        {!available && <p className="mt-2 text-sm text-red">This browser blocks local storage. Duel secrets can&apos;t be saved here.</p>}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={download} disabled={secrets.length === 0}>
             Back up (download)
@@ -406,7 +406,7 @@ function TakeABreak() {
     <Card className="p-4" >
       <h3 className="font-bold">Take a break</h3>
       <p className="mt-1 text-sm text-muted">
-        Hides creating and joining duels in this browser for the period you choose. Revealing, refunds and claims keep
+        Hides creating and joining duels in this browser for the period you choose. Revealing, timeouts and claims keep
         working. A break can&apos;t be shortened once started.
       </p>
       {limits.onBreak ? (

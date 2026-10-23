@@ -36,7 +36,7 @@ contract SuitCommitVectorsTest is Test {
             if (arenaAddr.code.length == 0) {
                 deployCodeTo(
                     "DuelArena.sol:DuelArena",
-                    abi.encode(address(this), address(0xFEE), address(0xBEEF), uint16(250)),
+                    abi.encode(address(this), address(0xFEE), uint16(250)),
                     arenaAddr
                 );
             }

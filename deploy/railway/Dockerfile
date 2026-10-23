@@ -1,4 +1,4 @@
-# Image untuk Railway: indexer Ponder dan auto-fulfill (testnet) dari monorepo pnpm.
+# Image untuk Railway: indexer Ponder dari monorepo pnpm.
 # Build context = root repo. Web TIDAK ada di sini (dideploy ke Vercel).
 FROM node:22-slim
 
@@ -23,5 +23,5 @@ COPY scripts scripts
 
 ENV NODE_ENV=production
 
-# Default: indexer. Service auto-fulfill menimpa start command lewat deploy/railway/auto-fulfill.json.
+# Default: indexer (deploy/railway/indexer.json memakai start command yang sama).
 CMD ["sh", "-c", "pnpm --filter @rivl/indexer exec ponder start --port ${PORT:-42069}"]

@@ -7,7 +7,7 @@
  *   GET /duels?ids=1,2,3                   beberapa duel (selalu 200, yang belum terindeks dilewati)
  *   GET /players/:address/duels            riwayat duel satu alamat
  *   GET /players/:address/stats            menang / kalah / seri / volume
- *   GET /players/:address/pending-reveals  duel Suit milik alamat yang menunggu reveal
+ *   GET /players/:address/pending-reveals  duel milik alamat yang menunggu reveal pembuat
  *   GET /players/:address/withdrawals      riwayat penarikan
  *   GET /results/recent                    duel terakhir yang selesai (feed Live results)
  *   GET /stats                             statistik global
@@ -162,7 +162,7 @@ app.get("/players/:address/duels", async (c) => {
  * - wins / losses: duel Settled yang dimenangkan / dikalahkan
  * - draws: duel Draw (refund tanpa fee)
  * - volume per token: total taruhan alamat ini di duel yang sudah diterima lawan
- * - net per token: (payout yang dimenangkan) − (taruhan di duel Settled). Seri/refund/batal = 0.
+ * - net per token: (payout yang dimenangkan) − (taruhan di duel Settled). Seri/batal = 0.
  */
 app.get("/players/:address/stats", async (c) => {
   const address = parseAddress(c.req.param("address"), "address");
@@ -175,9 +175,8 @@ app.get("/players/:address/stats", async (c) => {
       wins: sql<number>`count(*) filter (where ${won})`.mapWith(Number),
       losses: sql<number>`count(*) filter (where ${lost})`.mapWith(Number),
       draws: sql<number>`count(*) filter (where ${duel.status} = 'Draw')`.mapWith(Number),
-      refunded: sql<number>`count(*) filter (where ${duel.status} = 'Refunded')`.mapWith(Number),
       cancelled: sql<number>`count(*) filter (where ${duel.status} = 'Cancelled')`.mapWith(Number),
-      active: sql<number>`count(*) filter (where ${duel.status} in ('Open', 'AwaitingRandomness', 'AwaitingReveal'))`.mapWith(Number),
+      active: sql<number>`count(*) filter (where ${duel.status} in ('Open', 'AwaitingReveal'))`.mapWith(Number),
       volume: sql<string>`coalesce(sum(${duel.amount}) filter (where ${duel.joiner} is not null), 0)`,
       payoutWon: sql<string>`coalesce(sum(${duel.payout}) filter (where ${won}), 0)`,
       stakedSettled: sql<string>`coalesce(sum(${duel.amount}) filter (where ${duel.status} = 'Settled'), 0)`,
@@ -186,7 +185,7 @@ app.get("/players/:address/stats", async (c) => {
     .where(participant(address))
     .groupBy(duel.token);
 
-  const totals = { wins: 0, losses: 0, draws: 0, refunded: 0, cancelled: 0, active: 0 };
+  const totals = { wins: 0, losses: 0, draws: 0, cancelled: 0, active: 0 };
   const byToken = rows.map((r) => {
     for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += r[k];
     const payoutWon = BigInt(r.payoutWon);
@@ -205,7 +204,7 @@ app.get("/players/:address/stats", async (c) => {
   return json(c, { address, ...totals, byToken });
 });
 
-/** Duel Suit buatan alamat ini yang sudah diterima lawan dan menunggu reveal. Deadline terdekat dulu. */
+/** Duel buatan alamat ini (semua game) yang sudah diterima lawan dan menunggu reveal. Deadline terdekat dulu. */
 app.get("/players/:address/pending-reveals", async (c) => {
   const address = parseAddress(c.req.param("address"), "address");
   const now = nowSeconds(c);
@@ -213,7 +212,7 @@ app.get("/players/:address/pending-reveals", async (c) => {
   const rows = await db
     .select()
     .from(duel)
-    .where(and(eq(duel.game, "Suit"), eq(duel.creator, address), eq(duel.status, "AwaitingReveal")))
+    .where(and(eq(duel.creator, address), eq(duel.status, "AwaitingReveal")))
     .orderBy(asc(duel.deadline));
 
   const items = rows.map((r) => ({ ...r, expired: r.deadline !== null && r.deadline < now }));

@@ -3,7 +3,7 @@
  *
  * Membaca contracts/broadcast/Deploy.s.sol/<chainId>/run-latest.json, lalu:
  *   - menulis deployments/<network>.json
- *   - mencetak env untuk Railway (indexer, auto-fulfill) dan Vercel (web)
+ *   - mencetak env untuk Railway (indexer) dan Vercel (web)
  *
  * Alamat contract, blok deploy, dan alamat USDG diambil dari transaksi yang benar-benar dikirim,
  * bukan diketik ulang. Tidak ada private key yang dibaca atau ditulis.
@@ -65,8 +65,6 @@ function main() {
     b.transactions.find((t) => t.transactionType === "CREATE" && t.contractName === name);
   const arenaTx = created("DuelArena");
   if (!arenaTx?.contractAddress) throw new Error("DuelArena tidak ditemukan di broadcast.");
-  const devTx = created("DevRandomnessProvider");
-  const vrfTx = created("ChainlinkVRFAdapter");
 
   const receipt = b.receipts.find((r) => r.transactionHash === arenaTx.hash);
   if (!receipt) throw new Error("Receipt deploy DuelArena tidak ada; deploy belum terkonfirmasi?");
@@ -88,8 +86,6 @@ function main() {
     deployedAt: new Date(b.timestamp > 1e12 ? b.timestamp : b.timestamp * 1000).toISOString(),
     contracts: {
       arena: getAddress(arenaTx.contractAddress),
-      randomness: getAddress((vrfTx ?? devTx)!.contractAddress!),
-      randomnessKind: vrfTx ? "ChainlinkVRFAdapter" : "DevRandomnessProvider",
       usdg: usdgArg ?? null,
     },
     pendingOwner: pendingOwner ? getAddress(pendingOwner) : null,
@@ -103,10 +99,7 @@ function main() {
   const block = (title: string, lines: string[]) => console.log(`\n# ── ${title} ${"─".repeat(Math.max(0, 66 - title.length))}\n${lines.join("\n")}`);
 
   console.log(`Deployment ${net.name} (chain ${chainId}) → ${out}`);
-  console.log(`DuelArena ${c.arena} · ${c.randomnessKind} ${c.randomness} · blok ${startBlock}`);
-  if (c.randomnessKind === "DevRandomnessProvider" && chainId === 4663) {
-    console.log("\n!! DevRandomnessProvider di MAINNET melanggar docs/spec.md 3.6 no. 10. Jangan dipakai.");
-  }
+  console.log(`DuelArena ${c.arena} · blok ${startBlock}`);
 
   block("Railway: service indexer", [
     `INDEXER_CHAIN=${net.key === "anvil" ? "testnet" : net.key}`,
@@ -117,18 +110,6 @@ function main() {
     "DATABASE_URL=${{Postgres.DATABASE_URL}}",
     `DATABASE_SCHEMA=rivl_${startBlock}`,
   ]);
-
-  if (c.randomnessKind === "DevRandomnessProvider") {
-    block("Railway: service auto-fulfill (HANYA testnet)", [
-      "AUTO_FULFILL_CHAIN=testnet",
-      `ROBINHOOD_TESTNET_RPC=${rpcNote}`,
-      `ROBINHOOD_TESTNET_CHAIN_ID=${chainId}`,
-      `DEV_RANDOMNESS_ADDRESS=${c.randomness}`,
-      `ARENA_ADDRESS=${c.arena}`,
-      `ARENA_START_BLOCK=${startBlock}`,
-      "PRIVATE_KEY=<isi sebagai variabel rahasia di Railway: private key deployer = owner DevRandomnessProvider>",
-    ]);
-  }
 
   block("Vercel: project web (Root Directory = web)", [
     `NEXT_PUBLIC_CHAIN_ID=${chainId}`,
