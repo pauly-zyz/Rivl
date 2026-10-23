@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { configResult } from "@/lib/config";
+
 const LINKS = [
   { href: "/rules", label: "Rules & FAQ" },
   { href: "/fair", label: "Provably fair" },
@@ -9,6 +11,7 @@ const LINKS = [
 
 /** Footer dengan peringatan risiko (docs/spec.md 5.4). */
 export function Footer() {
+  const xUrl = configResult.ok ? configResult.config.xUrl : undefined;
   return (
     <footer className="relative border-t border-line/70 bg-bg/80" data-testid="footer">
       <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-red/50 via-transparent to-blue/50" />
@@ -32,6 +35,17 @@ export function Footer() {
               {l.label}
             </Link>
           ))}
+          {xUrl && (
+            <a
+              href={xUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-muted transition-colors hover:text-ink"
+              data-testid="footer-x"
+            >
+              Follow us on X
+            </a>
+          )}
         </nav>
       </div>
       <div className="mx-auto max-w-6xl px-4 pb-8 text-xs text-faint sm:px-6">
