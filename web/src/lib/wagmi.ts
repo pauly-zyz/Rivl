@@ -2,10 +2,14 @@
 
 import { connectorsForWallets, type WalletList } from "@rainbow-me/rainbowkit";
 import {
+  binanceWallet,
+  bitgetWallet,
   coinbaseWallet,
   injectedWallet,
   metaMaskWallet,
+  okxWallet,
   rabbyWallet,
+  trustWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
 import { createConfig, http } from "wagmi";
@@ -16,12 +20,23 @@ export function createWagmiConfig(cfg: AppConfig) {
   const appName = "Rivl";
   const projectId = cfg.walletConnectProjectId;
 
-  // MetaMask (mobile) dan WalletConnect butuh project ID WalletConnect. Tanpa itu, hanya wallet browser.
+  // Wallet mobile (MetaMask, Bitget, OKX, Trust, Binance) dan WalletConnect butuh project ID WalletConnect.
+  // Tanpa itu, hanya wallet browser.
   const wallets: WalletList = [
     {
       groupName: "Wallets",
       wallets: projectId
-        ? [injectedWallet, metaMaskWallet, rabbyWallet, coinbaseWallet, walletConnectWallet]
+        ? [
+            injectedWallet,
+            metaMaskWallet,
+            bitgetWallet,
+            okxWallet,
+            trustWallet,
+            binanceWallet,
+            rabbyWallet,
+            coinbaseWallet,
+            walletConnectWallet,
+          ]
         : [injectedWallet, rabbyWallet, coinbaseWallet],
     },
   ];
