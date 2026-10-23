@@ -71,6 +71,15 @@ export async function warp(seconds: number) {
   await test.mine({ blocks: 1 });
 }
 
+/** Buat Coinflip ETH terbuka lewat RPC (tanpa browser). */
+export async function createOpenCoinflip(creator: Address): Promise<bigint> {
+  const salt = randomSalt();
+  const commit = computeCommit({ chainId: d.chainId, arena: d.contracts.arena, creator, move: NO_MOVE, salt });
+  const id = await nextId();
+  await send(creator, "createCoinflip", [zeroAddress, stake, 0, commit], stake);
+  return id;
+}
+
 /** Kirim transaksi ke DuelArena dari akun Anvil yang unlocked (mis. aksi owner). */
 export async function arenaWrite(account: Address, functionName: string, args: readonly unknown[] = []) {
   await send(account, functionName, args);

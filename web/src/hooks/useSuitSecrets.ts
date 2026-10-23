@@ -17,7 +17,10 @@ import {
 } from "@/lib/suit";
 import { browserStore } from "@/lib/storage";
 
-/** Rahasia duel (semua game) di localStorage, tersinkron antar tab. */
+/** Event di tab yang sama setelah rahasia berubah (event "storage" hanya terkirim ke tab lain). */
+const LOCAL_EVENT = "rivl:secrets-changed";
+
+/** Rahasia duel (semua game) di localStorage, tersinkron antar komponen dan antar tab. */
 export function useSuitSecrets() {
   const [secrets, setSecrets] = useState<SuitSecret[]>([]);
   const [available, setAvailable] = useState(true);
@@ -34,7 +37,11 @@ export function useSuitSecrets() {
       if (e.key === STORAGE_KEY) refresh();
     };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(LOCAL_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(LOCAL_EVENT, refresh);
+    };
   }, [refresh]);
 
   const withStore = useCallback(
@@ -44,7 +51,8 @@ export function useSuitSecrets() {
         throw new Error("This browser blocks local storage, so your duel secret can't be saved. Use a normal window.");
       }
       const result = fn(store);
-      refresh();
+      // Semua pemakai hook ini di tab yang sama (mis. banner reveal) ikut melihat perubahan.
+      window.dispatchEvent(new Event(LOCAL_EVENT));
       return result;
     },
     [refresh],

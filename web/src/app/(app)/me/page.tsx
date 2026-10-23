@@ -5,7 +5,7 @@ import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import type { Address } from "viem";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
 import { Avatar } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
@@ -48,6 +48,7 @@ function MyDuels({ address }: { address: Address }) {
         </div>
       </header>
       <OwnershipInvite address={address} />
+      <OwnerPanel address={address} />
       <PendingReveals address={address} />
       <div className="grid gap-8 lg:grid-cols-2">
         <Claimable address={address} />
@@ -98,6 +99,101 @@ function OwnershipInvite({ address }: { address: Address }) {
           Accept ownership
         </Button>
       )}
+    </section>
+  );
+}
+
+/**
+ * Kontrol owner DuelArena (hanya tampil untuk owner()). Owner tidak pernah bisa menyentuh dana pemain;
+ * yang bisa diatur hanya batas waktu dan pause duel baru (docs/spec.md 3.3–3.4).
+ */
+function OwnerPanel({ address }: { address: Address }) {
+  const { arena, chain } = appConfig();
+  const tx = useTx();
+  const { data, refetch } = useReadContracts({
+    allowFailure: false,
+    contracts: [
+      { chainId: chain.id, address: arena, abi: duelArenaAbi, functionName: "owner" },
+      { chainId: chain.id, address: arena, abi: duelArenaAbi, functionName: "openDuration" },
+      { chainId: chain.id, address: arena, abi: duelArenaAbi, functionName: "revealWindow" },
+      { chainId: chain.id, address: arena, abi: duelArenaAbi, functionName: "paused" },
+    ],
+    query: { refetchInterval: 15_000 },
+  });
+  const [revealMin, setRevealMin] = useState("15");
+  const [openHours, setOpenHours] = useState("");
+  if (!data || !sameAddress(data[0] as string, address)) return null;
+  const [, openDuration, revealWindow, paused] = data as [string, bigint, bigint, boolean];
+
+  const reveal = Number(revealMin);
+  const open = openHours.trim() === "" ? Number(openDuration) : Math.round(Number(openHours) * 3600);
+  const revealOk = Number.isFinite(reveal) && reveal >= 5 && reveal <= 1440;
+  const openOk = Number.isFinite(open) && open >= 300 && open <= 7 * 86400;
+  const send = (label: string, functionName: string, args: readonly unknown[]) =>
+    tx.send(label, { address: arena, abi: duelArenaAbi, functionName, args }).then(() => refetch()).catch(() => {});
+
+  return (
+    <section className="rounded-2xl border border-line bg-surface/80 p-4 sm:p-5" data-testid="owner-panel">
+      <h2 className="text-lg font-black">Owner controls</h2>
+      <p className="mt-1 text-sm text-muted">
+        Only you see this. Owners can change time limits and pause new duels — never move player funds. Changes apply
+        to duels created or joined afterwards.
+      </p>
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-line bg-bg/50 p-3">
+          <div className="text-sm font-semibold">Reveal window</div>
+          <p className="tabular text-xs text-muted">Now: {formatDuration(Number(revealWindow))} (5 min – 24 h)</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              inputMode="numeric"
+              value={revealMin}
+              onChange={(e) => setRevealMin(e.target.value)}
+              aria-label="Reveal window in minutes"
+              className="tabular h-10 w-24 rounded-lg border border-line bg-raised px-3 outline-none focus:border-muted"
+            />
+            <span className="self-center text-sm text-muted">minutes</span>
+          </div>
+          <p className="mt-3 text-sm font-semibold">Open duel lifetime</p>
+          <p className="tabular text-xs text-muted">Now: {formatDuration(Number(openDuration))} (5 min – 7 days)</p>
+          <div className="mt-2 flex gap-2">
+            <input
+              inputMode="decimal"
+              value={openHours}
+              placeholder={(Number(openDuration) / 3600).toString()}
+              onChange={(e) => setOpenHours(e.target.value.replace(",", "."))}
+              aria-label="Open duel lifetime in hours"
+              className="tabular h-10 w-24 rounded-lg border border-line bg-raised px-3 outline-none focus:border-muted"
+            />
+            <span className="self-center text-sm text-muted">hours</span>
+          </div>
+          <Button
+            className="mt-3"
+            size="sm"
+            disabled={!revealOk || !openOk}
+            loading={tx.busy}
+            onClick={() => send("Update time limits", "setTimings", [BigInt(open), BigInt(Math.round(reveal * 60))])}
+          >
+            Save time limits
+          </Button>
+        </div>
+        <div className="rounded-xl border border-line bg-bg/50 p-3">
+          <div className="text-sm font-semibold">New duels</div>
+          <p className="text-xs text-muted">
+            {paused ? "Paused: nobody can create or join." : "Open: players can create and join."} Reveals, timeouts,
+            cancels and claims always keep working.
+          </p>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="secondary"
+            loading={tx.busy}
+            onClick={() => send(paused ? "Unpause" : "Pause", paused ? "unpause" : "pause", [])}
+          >
+            {paused ? "Resume new duels" : "Pause new duels"}
+          </Button>
+        </div>
+      </div>
+      <TxNotice state={tx.state} />
     </section>
   );
 }

@@ -30,8 +30,9 @@ for (const vp of VIEWPORTS) {
       const before = pageErrors(page).length;
       await page.goto(path);
       await expect(page.getByTestId("footer")).toBeVisible();
-      await page.waitForLoadState("networkidle");
-      await page.waitForTimeout(500);
+      // Bukan "networkidle": halaman sengaja memperbarui data tiap ±1,5 detik (lib/live.ts), jadi jaringan jarang diam.
+      await page.waitForLoadState("load");
+      await page.waitForTimeout(2_000);
 
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       expect(overflow, `${path} melebar ${overflow}px`).toBeLessThanOrEqual(0);

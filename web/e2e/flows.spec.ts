@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { parseEther, zeroAddress } from "viem";
 
-import { arenaRead, arenaWrite, balanceOf, warp } from "./chain";
+import { arenaRead, arenaWrite, balanceOf, createOpenCoinflip, warp } from "./chain";
 import { createDuel, expectStatus, joinDuel } from "./ui";
 import { connect, deployment, getDuel, pageErrors, playerPage, takeCreatedPages } from "./wallet";
 
@@ -33,6 +33,8 @@ test("Suit timeout: pembuat tidak reveal, penantang mengklaim kemenangan", async
   await connect(bob);
 
   const id = await createDuel(alice, { game: "Suit", token: "ETH", amount: "0.01", pick: "Rock" });
+  // Pembuat menutup browser-nya (kalau tetap terbuka, browser itu akan auto-reveal).
+  await alice.context().close();
   await joinDuel(bob, id, { token: "ETH", pick: "Paper" });
   await expectStatus(bob, "AwaitingReveal");
 
@@ -57,10 +59,12 @@ test("Suit timeout: pembuat tidak reveal, penantang mengklaim kemenangan", async
   expect(chain.creatorChoice).toBe(0); // tidak pernah di-reveal
   expect(chain.salt).toBe(`0x${"0".repeat(64)}`);
 
-  // Pembuat melihat kekalahannya; banner reveal untuk duel ini hilang.
-  await alice.goto(`/duel/${id}`);
-  await expect(alice.getByTestId("duel-result")).toContainText("You lost");
-  await expect(alice.getByTestId("reveal-banner").getByText(new RegExp(`Suit #${id}$`))).toHaveCount(0);
+  // Pembuat (browser lain) melihat kekalahannya; banner reveal untuk duel ini hilang.
+  const aliceLater = await playerPage(browser, ALICE);
+  await aliceLater.goto(`/duel/${id}`);
+  await connect(aliceLater);
+  await expect(aliceLater.getByTestId("duel-result")).toContainText("You lost");
+  await expect(aliceLater.getByTestId("reveal-banner").getByText(new RegExp(`Suit #${id}$`))).toHaveCount(0);
 
   // /fair menjelaskan kemenangan lewat timeout.
   await bob.goto(`/fair?id=${id}`);
@@ -146,4 +150,45 @@ test("owner baru menerima kepemilikan contract dari My duels (Ownable2Step)", as
   await arenaWrite(BOB, "transferOwnership", [original]);
   await arenaWrite(original, "acceptOwnership");
   expect(await arenaRead<string>("owner")).toBe(original);
+});
+
+test("duel baru langsung muncul di Open duels walaupun indexer tertinggal", async ({ browser }) => {
+  const page = await playerPage(browser, BOB);
+  // Simulasi indexer yang tertinggal: daftar duel terbuka dari indexer selalu kosong.
+  await page.route("**/duels/open*", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [] }) }),
+  );
+  await page.goto("/");
+  const id = await createOpenCoinflip(ALICE);
+  const started = Date.now();
+  await expect(page.getByTestId(`duel-card-${id}`)).toBeVisible({ timeout: 6_000 });
+  console.log(`duel #${id} tampil di lobby ${Date.now() - started} ms setelah transaksi create`);
+
+  // Dibatalkan pembuat → hilang dari daftar tanpa menunggu indexer.
+  await arenaWrite(ALICE, "cancel", [id]);
+  await expect(page.getByTestId(`duel-card-${id}`)).toHaveCount(0, { timeout: 6_000 });
+});
+
+test("owner mengubah jendela reveal menjadi 15 menit dari My duels", async ({ browser }) => {
+  const owner = await arenaRead<`0x${string}`>("owner");
+  const before = await arenaRead<bigint>("revealWindow");
+  const page = await playerPage(browser, owner);
+  await page.goto("/me");
+  await connect(page);
+  const panel = page.getByTestId("owner-panel");
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Reveal window in minutes").fill("15");
+  await panel.getByRole("button", { name: "Save time limits" }).click();
+  await expect.poll(() => arenaRead<bigint>("revealWindow")).toBe(900n);
+  await expect(panel).toContainText("Now: 15m");
+
+  // Pemain biasa tidak melihat panel ini.
+  const player = await playerPage(browser, BOB);
+  await player.goto("/me");
+  await connect(player);
+  await expect(player.getByRole("heading", { name: "My duels" })).toBeVisible();
+  await expect(player.getByTestId("owner-panel")).toHaveCount(0);
+
+  // Kembalikan nilai semula supaya test lain tidak terpengaruh.
+  await arenaWrite(owner, "setTimings", [await arenaRead<bigint>("openDuration"), before]);
 });

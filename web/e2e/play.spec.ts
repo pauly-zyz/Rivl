@@ -61,16 +61,13 @@ test("Coinflip dengan ETH: buat, terima, reveal, hasil dari rahasia kedua pemain
   await expect(bob.getByTestId(`duel-card-${id}`)).toBeVisible();
 
   await joinDuel(bob, id, { token: "ETH" });
-  await expectStatus(bob, "AwaitingReveal");
-  await expect(bob.getByTestId("coin")).toHaveAttribute("data-phase", "waiting");
 
   // Rahasia Coinflip tersimpan di browser alice dengan commit yang sama di chain (move 0).
   const chainCommit = (await getDuel(id)).commit;
   const stored = await alice.evaluate(() => JSON.parse(localStorage.getItem("rivl:suit-secrets:v1") ?? "[]"));
   expect(stored.find((s: { commit: string }) => s.commit === chainCommit.toLowerCase())).toMatchObject({ move: 0, duelId: id.toString() });
 
-  await alice.goto(`/duel/${id}`);
-  await alice.getByRole("button", { name: "Reveal & flip" }).click();
+  // Halaman alice masih terbuka: browser-nya me-reveal otomatis begitu bob bergabung.
   const phases = await assertNoEarlyResult(alice, id, "coin");
   await expectStatus(alice, "Settled");
   await expectStatus(bob, "Settled");
@@ -95,14 +92,8 @@ test("Dice Duel dengan USDG: approve, buat, terima, angka sama dengan chain", as
 
   const id = await createDuel(alice, { game: "Dice Duel", token: "USDG", amount: "5" });
   await joinDuel(bob, id, { token: "USDG" });
-  await expectStatus(bob, "AwaitingReveal");
   await bob.screenshot({ path: `${SHOTS}/03-dice-rolling.png`, fullPage: true });
-
-  // Banner reveal juga muncul untuk Dice.
-  await alice.goto("/");
-  await expect(alice.getByTestId("reveal-banner")).toContainText(`Dice Duel #${id}`);
-  await alice.goto(`/duel/${id}`);
-  await alice.getByRole("button", { name: "Reveal & roll" }).click();
+  // Auto-reveal dari browser alice yang masih terbuka.
   await assertNoEarlyResult(bob, id, "dice");
   await expectStatus(bob, /Settled|Draw/);
 
@@ -129,33 +120,12 @@ test("Suit: commit di browser, reveal, lalu klaim", async ({ browser }) => {
   const secret = stored.find((s: { commit: string }) => s.commit === chainCommit.toLowerCase());
   expect(secret).toMatchObject({ move: 1, duelId: id.toString() });
 
-  await joinDuel(bob, id, { token: "ETH", pick: "Paper" });
-  await expectStatus(bob, "AwaitingReveal");
-
-  // Banner "You need to reveal" muncul untuk alice di halaman mana pun.
+  // Alice pindah ke lobby; browser-nya tetap terbuka dan me-reveal otomatis begitu bob bergabung.
   await alice.goto("/");
-  const banner = alice.getByTestId("reveal-banner");
-  await expect(banner).toContainText("You need to reveal");
-  await expect(banner).toContainText(`Suit #${id}`);
-  await alice.screenshot({ path: `${SHOTS}/05-suit-reveal-banner.png`, fullPage: true });
-  await expect(bob.getByTestId("suit")).toHaveAttribute("data-phase", "waiting");
-
-  // Simulasikan indexer yang tertinggal: mulai sekarang alice terus menerima daftar pending-reveals lama.
-  let stale: string | undefined;
-  await alice.route("**/players/*/pending-reveals*", async (route) => {
-    if (!stale) stale = await (await route.fetch()).text();
-    await route.fulfill({ status: 200, contentType: "application/json", body: stale });
-  });
-
-  await banner.getByRole("link", { name: "Reveal now" }).click();
-  await alice.waitForURL(`**/duel/${id}`);
-  await alice.getByRole("button", { name: "Reveal my move" }).click();
-  await expectStatus(alice, "Settled");
-  // Duel ini hilang dari banner karena status di chain sudah final, walaupun indexer belum mengejar.
-  // (Duel lain dari run sebelumnya boleh masih ada.)
-  expect(stale).toContain(`"id":"${id}"`);
+  await joinDuel(bob, id, { token: "ETH", pick: "Paper" });
+  await expectStatus(bob, "Settled");
+  await alice.screenshot({ path: `${SHOTS}/05-suit-auto-revealed.png`, fullPage: true });
   await expect(alice.getByTestId("reveal-banner").getByText(new RegExp(`Suit #${id}$`))).toHaveCount(0, { timeout: 5_000 });
-  await alice.unroute("**/players/*/pending-reveals*");
 
   const chain = await getDuel(id);
   expect(chain.winner.toLowerCase()).toBe(BOB.toLowerCase()); // Paper > Rock
@@ -180,13 +150,18 @@ test("Suit: backup di satu browser, restore di browser lain, lalu reveal", async
   await connect(bob);
 
   const id = await createDuel(alice, { game: "Suit", token: "ETH", amount: "0.01", pick: "Scissors" });
-  await joinDuel(bob, id, { token: "ETH", pick: "Paper" });
 
   await alice.goto("/me");
   const downloadPromise = alice.waitForEvent("download");
   await alice.getByRole("button", { name: "Back up (download)" }).click();
-  const file = await (await downloadPromise).path();
+  // Simpan salinan: file unduhan Playwright dihapus saat context-nya ditutup.
+  const file = test.info().outputPath(`backup-${id}.json`);
+  await (await downloadPromise).saveAs(file);
   expect(JSON.parse(readFileSync(file, "utf8")).type).toBe("rivl-suit-secrets"); // format tetap, supaya backup lama bisa dipulihkan
+  // Browser asal ditutup sebelum lawan bergabung (kalau tetap terbuka, browser itu akan auto-reveal).
+  await alice.context().close();
+  await joinDuel(bob, id, { token: "ETH", pick: "Paper" });
+  await expectStatus(bob, "AwaitingReveal");
 
   // Browser baru (localStorage kosong): tidak bisa reveal sampai backup dipulihkan.
   const fresh = await playerPage(browser, ALICE, { width: 375, height: 812 });
@@ -202,8 +177,8 @@ test("Suit: backup di satu browser, restore di browser lain, lalu reveal", async
   await expect(fresh.getByText(/Restored \d+ secrets?\./)).toBeVisible();
   await fresh.screenshot({ path: `${SHOTS}/09-mobile-me-restored.png`, fullPage: true });
 
+  // Begitu rahasia dipulihkan, browser ini me-reveal otomatis.
   await fresh.goto(`/duel/${id}`);
-  await fresh.getByRole("button", { name: "Reveal my move" }).click();
   await expectStatus(fresh, "Settled");
   const chain = await getDuel(id);
   expect(chain.winner.toLowerCase()).toBe(ALICE.toLowerCase()); // Scissors > Paper
