@@ -10,6 +10,7 @@ import { CoinFlip, DiceDuel, SuitHands } from "@/components/arena";
 import { Avatar } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
 import { JoinDuelModal } from "@/components/JoinDuelModal";
+import { MatchOverlay, useMatchFlow, WaitingRoom } from "@/components/matchFlow";
 import { Badge, BreakNotice, Button, Card, Row, SectionTitle, TxLink, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
 import { useLimits } from "@/hooks/useLimits";
@@ -66,7 +67,10 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
   const now = useNow();
 
   const game = GAMES[duel.game] as Game;
-  const status = STATUSES[duel.status] as Status;
+  const chainStatus = STATUSES[duel.status] as Status;
+  // Alur duel langsung: MATCH FOUND saat lawan masuk, hitung mundur sebelum hasil (components/matchFlow.tsx).
+  const match = useMatchFlow(chainStatus, duel.joinedAt, now);
+  const status = match.displayStatus;
   const token = findToken(tokens, duel.token);
   const isCreator = sameAddress(address, duel.creator);
   const isJoiner = sameAddress(address, duel.joiner);
@@ -103,7 +107,8 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
         </div>
       </div>
 
-      <div className="stage edge-gradient overflow-hidden rounded-3xl border border-line animate-rise [animation-delay:80ms]">
+      <div className="stage edge-gradient relative overflow-hidden rounded-3xl border border-line animate-rise [animation-delay:80ms]">
+        <MatchOverlay view={match} creator={duel.creator} joiner={isZero(duel.joiner) ? undefined : duel.joiner} />
         <div className="grid grid-cols-2">
           <Corner
             side="creator"
@@ -122,13 +127,16 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
             outcome={winnerSide === undefined ? undefined : winnerSide === "joiner" ? "win" : "lose"}
           />
         </div>
-        <div className="relative px-4 py-12 sm:py-14">
+        <div className={`relative px-4 py-12 sm:py-14 ${status === "Open" ? "pb-20 sm:pb-20" : ""}`}>
           <ArenaAnimation game={game} status={status} duel={duel} />
+          {status === "Open" && <WaitingRoom isCreator={isCreator} />}
         </div>
         <ResultBanner status={status} duel={duel} address={address} payout={fmt(payout)} />
       </div>
 
-      <Actions id={id} duel={duel} status={status} game={game} token={token} now={now} isCreator={isCreator} isJoiner={isJoiner} />
+      {match.overlay !== "countdown" && (
+        <Actions id={id} duel={duel} status={status} game={game} token={token} now={now} isCreator={isCreator} isJoiner={isJoiner} />
+      )}
 
       <Card className="p-4">
         <SectionTitle>Details</SectionTitle>

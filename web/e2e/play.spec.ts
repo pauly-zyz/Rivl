@@ -60,7 +60,13 @@ test("Coinflip dengan ETH: buat, terima, reveal, hasil dari rahasia kedua pemain
   await bob.goto("/");
   await expect(bob.getByTestId(`duel-card-${id}`)).toBeVisible();
 
+  await expect(alice.getByTestId("waiting-room")).toBeVisible();
   await joinDuel(bob, id, { token: "ETH" });
+  // Duel langsung: kedua pemain melihat MATCH FOUND, lalu hitung mundur sebelum hasil.
+  await expect(alice.getByTestId("match-found").or(alice.getByTestId("match-countdown"))).toBeVisible();
+  await alice.screenshot({ path: `${SHOTS}/01b-coinflip-match.png` });
+  await expect(alice.getByTestId("match-countdown")).toBeVisible();
+  await alice.screenshot({ path: `${SHOTS}/01c-coinflip-countdown.png` });
 
   // Rahasia Coinflip tersimpan di browser alice dengan commit yang sama di chain (move 0).
   const chainCommit = (await getDuel(id)).commit;
