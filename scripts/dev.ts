@@ -54,6 +54,7 @@ async function main(): Promise<void> {
       NEXT_PUBLIC_ARENA_ADDRESS: d.contracts.arena,
       NEXT_PUBLIC_USDG_ADDRESS: d.contracts.usdg,
       NEXT_PUBLIC_INDEXER_URL: indexerUrl,
+      NEXT_PUBLIC_RIVL_TOKEN_ADDRESS: d.contracts.rivl ?? "",
       NEXT_PUBLIC_X_URL: envString("NEXT_PUBLIC_X_URL") ?? "",
     }),
   };

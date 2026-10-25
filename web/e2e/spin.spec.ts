@@ -58,7 +58,10 @@ test("Daily Spin: holder menang RIVL, owner publikasi klaim mingguan, holder kla
 
   const carol = await playerPage(browser, CAROL);
   await spin(carol, "rivl_10k");
-  await expect(carol.getByTestId("odds-rivl_10k")).toHaveText("100%");
+  // Peluang tidak pernah ditampilkan; daftar hadiah dan alamat token resmi tampil.
+  await expect(carol.getByTestId("prize-jackpot")).toBeVisible();
+  await expect(carol.getByText("%", { exact: false }).filter({ hasText: /\d%/ })).toHaveCount(0);
+  await expect(carol.getByTestId("official-token").first()).toContainText(RIVL);
   await carol.screenshot({ path: `${SHOTS}/40-spin-won.png`, fullPage: true });
 
   // Spin kedua di hari yang sama ditolak (tombol tidak ada lagi, server juga menolak).

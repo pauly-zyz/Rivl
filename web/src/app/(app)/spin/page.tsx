@@ -8,6 +8,7 @@ import { encodeAbiParameters, keccak256, type Address, type Hex } from "viem";
 import { useAccount, useSignMessage } from "wagmi";
 
 import { Avatar } from "@/components/Avatar";
+import { OfficialToken } from "@/components/OfficialToken";
 import { SpinWheel, targetRotation } from "@/components/SpinWheel";
 import { Badge, Button, Card, SectionTitle } from "@/components/ui";
 import { BADGES, FRAMES, RARITY_STYLE, titleStyle } from "@/lib/cosmetics";
@@ -44,7 +45,6 @@ function useWallClock() {
   return now;
 }
 
-const pct = (ppm: number) => `${(ppm / 10_000).toLocaleString("en-US", { maximumFractionDigits: 3 })}%`;
 const whole = (s: string) => Number(s).toLocaleString("en-US");
 
 export default function SpinPage() {
@@ -62,11 +62,12 @@ export default function SpinPage() {
           {info?.settings.minHoldHours ?? 12} hours and spin the wheel once a day for free — fee-free wins, XP,
           cosmetics and RIVL prizes. Resets at 00:00 UTC.
         </p>
+        <OfficialToken className="mx-auto mt-5 max-w-xl text-left" />
       </header>
 
       {isError && <p className="text-center text-sm text-red">Daily Spin is unavailable right now. Try again in a moment.</p>}
       {info && <SpinArena info={info} player={player} address={address} />}
-      {info && <Odds info={info} />}
+      {info && <Prizes info={info} />}
       {info && <CosmeticsGallery info={info} player={player} />}
       {info && <Fairness info={info} player={player} />}
     </div>
@@ -284,35 +285,42 @@ function MiniStats({ player, info }: { player: PlayerRewards; info: RewardsInfo 
   );
 }
 
-function Odds({ info }: { info: RewardsInfo }) {
+const PRIZE_ICON: Record<Prize, string> = {
+  try_again: "🔁",
+  fee_free_1: "🎟️",
+  fee_free_3: "🎟️",
+  xp_50: "⭐",
+  xp_150: "🌟",
+  cosmetic: "🎨",
+  rivl_10k: "🪙",
+  rivl_50k: "💰",
+  jackpot: "🎰",
+};
+
+/** Daftar hadiah (peluang sengaja tidak ditampilkan). */
+function Prizes({ info }: { info: RewardsInfo }) {
   const s = info.settings;
-  const jackpotOn = info.odds.jackpot > 0;
   return (
     <section>
-      <SectionTitle>Prizes &amp; odds</SectionTitle>
-      <Card className="overflow-hidden">
-        <table className="w-full text-sm">
-          <tbody>
-            {PRIZE_ORDER.map((p) => (
-              <tr key={p} className="border-b border-line/60 last:border-0">
-                <td className="px-4 py-2.5 font-semibold">{PRIZE_LABEL[p]}</td>
-                <td className="tabular px-4 py-2.5 text-right text-muted" data-testid={`odds-${p}`}>
-                  {p === "jackpot" && !jackpotOn ? (
-                    <span>
-                      0% <span className="text-xs">(launch week) → {pct(s.jackpotPpm)}</span>
-                    </span>
-                  ) : (
-                    pct(info.odds[p])
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <SectionTitle>Prizes</SectionTitle>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {PRIZE_ORDER.map((p) => (
+          <div
+            key={p}
+            className={`flex items-center gap-2.5 rounded-xl border bg-surface/80 px-3 py-3 ${
+              p === "jackpot" ? "border-[#ffc94d]/60 sm:col-span-2 lg:col-span-1" : "border-line"
+            }`}
+            data-testid={`prize-${p}`}
+          >
+            <span aria-hidden className="text-xl">
+              {PRIZE_ICON[p]}
+            </span>
+            <span className={`text-sm font-bold ${p === "jackpot" ? "text-[#ffc94d]" : ""}`}>{PRIZE_LABEL[p]}</span>
+          </div>
+        ))}
+      </div>
       <ul className="mt-3 space-y-1 text-xs text-muted">
-        <li>• Jackpot: max {s.jackpotWeeklyMax} per week. A second jackpot roll in the same week pays 50,000 RIVL instead.</li>
-        <li>• Weekly RIVL budget: {whole(s.weeklyRivlBudget)} RIVL. When it runs out, RIVL rolls become +150 XP until Monday.</li>
+        <li>• The jackpot unlocks after launch week and can be won {s.jackpotWeeklyMax}× per week.</li>
         <li>• After {s.pityAfter} &ldquo;Try again&rdquo; in a row, your next spin is guaranteed a prize.</li>
         <li>• Fee-free wins refund the fee of your next winning duels (ETH or USDG) in the weekly claim.</li>
         <li>• Token prizes and refunds are claimed once a week on My duels — one transaction for everything.</li>
@@ -390,8 +398,7 @@ function Fairness({ info, player }: { info: RewardsInfo; player?: PlayerRewards 
         <p className="text-muted">
           Every day has a secret seed. Its hash is published <b className="text-ink">before</b> the day starts, and the
           seed itself is revealed after the day ends, so nobody can change results after the fact. Your roll is{" "}
-          <code className="text-ink">keccak256(abi.encode(seed, wallet, day)) mod 1,000,000</code>, mapped onto the
-          odds table in order.
+          <code className="text-ink">keccak256(abi.encode(seed, wallet, day)) mod 1,000,000</code>.
         </p>
         {info.fairness.commit && (
           <div className="space-y-1 font-mono text-xs">

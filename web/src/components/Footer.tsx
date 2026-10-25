@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { OfficialToken } from "./OfficialToken";
 import { configResult } from "@/lib/config";
 
 const LINKS = [
@@ -28,6 +29,7 @@ export function Footer() {
             stake. Blockchain transactions are final and can&apos;t be reversed. Only play with money you can afford to
             lose. You are responsible for following the laws where you live.
           </p>
+          <OfficialToken className="max-w-2xl" />
         </div>
         <nav className="flex flex-col gap-2.5 text-sm md:items-end" aria-label="Footer">
           {LINKS.map((l) => (

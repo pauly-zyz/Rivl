@@ -14,6 +14,7 @@ const raw = {
   NEXT_PUBLIC_USDG_ADDRESS: process.env.NEXT_PUBLIC_USDG_ADDRESS,
   NEXT_PUBLIC_INDEXER_URL: process.env.NEXT_PUBLIC_INDEXER_URL,
   NEXT_PUBLIC_X_URL: process.env.NEXT_PUBLIC_X_URL,
+  NEXT_PUBLIC_RIVL_TOKEN_ADDRESS: process.env.NEXT_PUBLIC_RIVL_TOKEN_ADDRESS,
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID,
 };
 
@@ -25,6 +26,8 @@ export type AppConfig = {
   usdg?: Address;
   indexerUrl: string;
   xUrl?: string;
+  /** Token resmi $RIVL (ditampilkan di footer dan /spin supaya pengguna tidak tertipu token palsu). */
+  rivlToken?: Address;
   walletConnectProjectId?: string;
 };
 
@@ -45,6 +48,7 @@ function load(): ConfigResult {
   if (!indexerUrl) missing.push("NEXT_PUBLIC_INDEXER_URL");
   const usdg = val(raw.NEXT_PUBLIC_USDG_ADDRESS);
   if (usdg && !isAddress(usdg)) missing.push("NEXT_PUBLIC_USDG_ADDRESS (not a valid address)");
+  const rivlToken = val(raw.NEXT_PUBLIC_RIVL_TOKEN_ADDRESS);
   if (missing.length) return { ok: false, missing };
 
   const explorerUrl = val(raw.NEXT_PUBLIC_EXPLORER_URL)?.replace(/\/+$/, "");
@@ -66,6 +70,7 @@ function load(): ConfigResult {
       usdg: usdg ? getAddress(usdg) : undefined,
       indexerUrl: indexerUrl!.replace(/\/+$/, ""),
       xUrl: val(raw.NEXT_PUBLIC_X_URL),
+      rivlToken: rivlToken && isAddress(rivlToken) ? getAddress(rivlToken) : undefined,
       walletConnectProjectId: val(raw.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID),
     },
   };
