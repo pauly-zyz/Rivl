@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Avatar } from "./Avatar";
+import { useNotificationPermission } from "@/lib/notify";
 import type { Status } from "@/lib/duel";
 import { shortAddress } from "@/lib/format";
 
@@ -120,8 +121,9 @@ function Fighter({ address, corner, label }: { address?: string; corner: "red" |
 
 /** Ruang tunggu saat duel masih terbuka. */
 export function WaitingRoom({ isCreator }: { isCreator: boolean }) {
+  const { permission, request } = useNotificationPermission();
   return (
-    <div className="absolute inset-x-0 bottom-3 flex justify-center px-4" data-testid="waiting-room">
+    <div className="absolute inset-x-0 bottom-3 flex flex-col items-center gap-2 px-4" data-testid="waiting-room">
       <div className="inline-flex items-center gap-3 rounded-full border border-blue/40 bg-bg/80 px-4 py-2 backdrop-blur">
         <span className="relative flex h-2.5 w-2.5">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue opacity-70" />
@@ -131,6 +133,19 @@ export function WaitingRoom({ isCreator }: { isCreator: boolean }) {
           {isCreator ? "Waiting for a rival… share the link to fill the blue corner" : "Blue corner is open — join to duel"}
         </span>
       </div>
+      {isCreator && permission === "default" && (
+        <button
+          type="button"
+          onClick={request}
+          className="rounded-full border border-line-strong bg-bg/70 px-3 py-1 text-xs font-semibold text-muted transition-colors hover:text-ink"
+          data-testid="notify-rival"
+        >
+          🔔 Notify me when a rival joins
+        </button>
+      )}
+      {isCreator && permission === "granted" && (
+        <span className="text-xs text-muted">🔔 We&apos;ll notify you when a rival joins (keep this tab open).</span>
+      )}
     </div>
   );
 }

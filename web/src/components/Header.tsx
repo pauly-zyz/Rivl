@@ -3,6 +3,9 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+
+import { setMuted, unlockAudioOnInteraction, useSoundMuted } from "@/lib/sfx";
 
 const NAV = [
   { href: "/", label: "Lobby", mobile: true },
@@ -17,6 +20,28 @@ export function Logo({ className = "text-2xl" }: { className?: string }) {
     <span className={`font-display font-black leading-none ${className}`}>
       Rivl<span className="text-red">.</span>
     </span>
+  );
+}
+
+/** Tombol suara efek arena (MATCH FOUND, hitung mundur, menang/kalah). */
+function SoundToggle() {
+  const muted = useSoundMuted();
+  useEffect(unlockAudioOnInteraction, []);
+  return (
+    <button
+      type="button"
+      onClick={() => setMuted(!muted)}
+      aria-label={muted ? "Turn sound on" : "Turn sound off"}
+      aria-pressed={!muted}
+      title={muted ? "Sound off" : "Sound on"}
+      data-testid="sound-toggle"
+      className="grid h-10 w-10 place-items-center rounded-xl border border-line text-muted transition-colors hover:text-ink"
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M4 10v4h4l5 4V6L8 10z" fill="currentColor" fillOpacity="0.15" />
+        {muted ? <path d="M17 9l5 6M22 9l-5 6" /> : <path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" />}
+      </svg>
+    </button>
   );
 }
 
@@ -43,7 +68,8 @@ export function Header() {
             </Link>
           ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <SoundToggle />
           <ConnectButton
             label="Connect"
             showBalance={false}

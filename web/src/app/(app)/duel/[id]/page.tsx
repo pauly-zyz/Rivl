@@ -3,7 +3,7 @@
 import { duelArenaAbi } from "@rivl/contracts/abi";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { CoinFlip, DiceDuel, SuitHands } from "@/components/arena";
@@ -30,6 +30,7 @@ import {
   type Status,
 } from "@/lib/duel";
 import { formatAmount, formatDuration, shortAddress } from "@/lib/format";
+import { sfx } from "@/lib/sfx";
 import { useIndexedDuel } from "@/lib/indexer";
 
 export default function DuelPage() {
@@ -71,6 +72,7 @@ function DuelView({ id, duel }: { id: bigint; duel: ChainDuel }) {
   // Alur duel langsung: MATCH FOUND saat lawan masuk, hitung mundur sebelum hasil (components/matchFlow.tsx).
   const match = useMatchFlow(chainStatus, duel.joinedAt, now);
   const status = match.displayStatus;
+  useMatchSounds(match, status, duel, address);
   const token = findToken(tokens, duel.token);
   const isCreator = sameAddress(address, duel.creator);
   const isJoiner = sameAddress(address, duel.joiner);
@@ -433,4 +435,26 @@ function TxItem({ label, hash }: { label: string; hash: string }) {
       <TxLink hash={hash} />
     </li>
   );
+}
+
+/** Suara arena: MATCH FOUND, tiap angka hitung mundur, lalu menang/kalah/seri saat hasil tampil. */
+function useMatchSounds(match: { overlay: "match" | "countdown" | null; count: number }, status: Status, duel: ChainDuel, address?: string) {
+  const prevStatus = useRef<Status | undefined>(undefined);
+  useEffect(() => {
+    if (match.overlay === "match") sfx.match();
+  }, [match.overlay]);
+  useEffect(() => {
+    if (match.overlay === "countdown") sfx.tick();
+  }, [match.overlay, match.count]);
+  useEffect(() => {
+    const before = prevStatus.current;
+    prevStatus.current = status;
+    // Hanya saat hasil muncul selagi halaman terbuka (bukan saat membuka duel yang sudah lama selesai).
+    if (before === undefined || before === status) return;
+    if (status === "Settled") {
+      if (sameAddress(address, duel.winner)) sfx.win();
+      else if (sameAddress(address, duel.creator) || sameAddress(address, duel.joiner)) sfx.lose();
+      else sfx.neutral();
+    } else if (status === "Draw") sfx.neutral();
+  }, [status, address, duel.winner, duel.creator, duel.joiner]);
 }

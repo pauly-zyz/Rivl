@@ -61,6 +61,13 @@ test("Coinflip dengan ETH: buat, terima, reveal, hasil dari rahasia kedua pemain
   await expect(bob.getByTestId(`duel-card-${id}`)).toBeVisible();
 
   await expect(alice.getByTestId("waiting-room")).toBeVisible();
+  // Tombol suara di header bisa dimatikan/dinyalakan.
+  const sound = alice.getByTestId("sound-toggle");
+  await expect(sound).toHaveAttribute("aria-pressed", "true");
+  await sound.click();
+  await expect(sound).toHaveAttribute("aria-pressed", "false");
+  await sound.click();
+  await expect(sound).toHaveAttribute("aria-pressed", "true");
   await joinDuel(bob, id, { token: "ETH" });
   // Duel langsung: kedua pemain melihat MATCH FOUND, lalu hitung mundur sebelum hasil.
   await expect(alice.getByTestId("match-found").or(alice.getByTestId("match-countdown"))).toBeVisible();

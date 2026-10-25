@@ -2,6 +2,7 @@
 
 import { duelArenaAbi } from "@rivl/contracts/abi";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { useAccount } from "wagmi";
 
@@ -12,9 +13,13 @@ import { useSuitSecrets } from "@/hooks/useSuitSecrets";
 import { useTx } from "@/hooks/useTx";
 import { appConfig } from "@/lib/config";
 import { formatDuration } from "@/lib/format";
+import { notifyRivalJoined } from "@/lib/notify";
+import { sfx } from "@/lib/sfx";
 
 /** Duel yang sudah dicoba di-reveal otomatis pada pemuatan halaman ini (supaya wallet tidak diminta berulang). */
 const autoRevealTried = new Set<string>();
+/** Duel yang kedatangan lawannya sudah diberitahukan (suara/notifikasi) pada pemuatan halaman ini. */
+const announced = new Set<string>();
 
 /**
  * "You need to reveal" (docs/spec.md 5.3 langkah 6) + auto-reveal.
@@ -29,6 +34,19 @@ export function RevealBanner() {
   const tx = useTx();
 
   const pending = data.filter((d) => now === undefined || Number(d.deadline) >= now);
+  const pathname = usePathname();
+
+  // Lawan masuk ke room milik pengguna: notifikasi browser (jika tab di latar) + suara (jika bukan di halaman
+  // duel itu; halaman duel memutar suaranya sendiri bersama layar MATCH FOUND).
+  useEffect(() => {
+    for (const d of pending) {
+      const key = `${address}:${d.id}`;
+      if (announced.has(key)) continue;
+      announced.add(key);
+      notifyRivalJoined(d);
+      if (!pathname?.endsWith(`/duel/${d.id}`)) sfx.match();
+    }
+  }, [pending, address, pathname]);
 
   useEffect(() => {
     if (!address || tx.busy) return;
