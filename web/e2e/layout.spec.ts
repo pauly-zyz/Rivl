@@ -14,7 +14,7 @@ test.afterEach(async () => {
   expect(errors, "error console browser").toEqual([]);
 });
 
-const PAGES = ["/", "/me", "/duel/1", "/fair", "/fair?id=1", "/rules", "/terms", "/responsible-gaming"];
+const PAGES = ["/", "/me", "/spin", "/duel/1", "/fair", "/fair?id=1", "/rules", "/terms", "/responsible-gaming"];
 const VIEWPORTS = [
   { name: "mobile", width: 375, height: 812 },
   { name: "desktop", width: 1280, height: 900 },

@@ -15,7 +15,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, "abi");
 const check = process.argv.includes("--check");
 
-const CONTRACTS = [{ name: "DuelArena", source: "DuelArena.sol", constName: "duelArenaAbi" }];
+const CONTRACTS = [
+  { name: "DuelArena", source: "DuelArena.sol", constName: "duelArenaAbi" },
+  { name: "RivlRewards", source: "RivlRewards.sol", constName: "rivlRewardsAbi" },
+];
 
 const HEADER = "// File ini dibuat otomatis oleh contracts/script/export-abi.mjs. Jangan diedit manual.\n";
 const files = {};

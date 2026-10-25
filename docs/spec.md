@@ -301,6 +301,29 @@ Jika salt hilang, pemain tidak bisa reveal dan kalah karena timeout. Karena itu 
 - Mobile-first; harus rapi di lebar 375px.
 - Jangan memakai nama, logo, maskot, atau warna merek Robinhood, termasuk "Hood" dan "Cash Cat".
 
+### 5.6 Daily Spin (holder RIVL)
+
+Disetujui pemilik. Fitur terpisah dari DuelArena; aturan 3.6 tetap berlaku untuk duel dan tidak berubah.
+
+- Syarat: wallet memegang minimal 2.000.000 RIVL tanpa pernah turun di bawahnya selama 12 jam terakhir
+  (saldo dari event Transfer + cek `balanceOf` langsung). Batas dan jam bisa diubah owner.
+- Satu spin per wallet per hari (UTC), cukup tanda tangan pesan (tanpa gas). Tanda tangan juga mencegah
+  alamat contract (mis. pool DEX) ikut spin.
+- Hadiah dan peluang awal: coba lagi 40%, 1 duel tanpa fee 18%, 3 duel tanpa fee 4%, +50 XP 20%,
+  +150 XP 7%, kosmetik 10%, 10.000 RIVL 0,8%, 50.000 RIVL 0,2%. Jackpot 1.000.000 RIVL: 0% selama minggu
+  pertama sejak tanggal launch, lalu 0,05% (diambil dari +150 XP), maksimal 1 per minggu (kelebihan → 50.000 RIVL).
+- Anggaran RIVL per minggu (default 5.000.000); jika habis, hadiah RIVL menjadi +150 XP.
+- Setelah 7 kali "coba lagi" berturut-turut, spin berikutnya dijamin dapat hadiah.
+- "Duel tanpa fee" = pengembalian fee duel berikutnya yang dimenangkan (ETH/USDG), lewat klaim mingguan.
+  DuelArena tidak diubah.
+- Kosmetik: frame avatar, badge, dan title (common/rare/epic/legendary), dipakai dari /me dan tampil di duel.
+- Keadilan: seed harian = HMAC(SPIN_SECRET, hari); hash seed diumumkan sebelum hari dimulai dan seed dibuka
+  setelahnya. roll = keccak256(abi.encode(seed, wallet, hari)) mod 1.000.000, bisa dicek di /spin.
+  Catatan: berbeda dengan duel, sumber acak ini dipegang operator (dipilih pemilik; aturan 3.6 no. 10 khusus duel).
+- Klaim mingguan: contract `RivlRewards` (Merkle root kumulatif per akun & token, satu transaksi untuk semua
+  token). Owner memposting root dari panel /me. Pembayaran tidak bisa melebihi saldo contract (batas anggaran).
+- Sebelum launch: minta pendapat konsultan hukum (hadiah token bernilai uang untuk pemegang token).
+
 ---
 
 ## 6. Struktur repo

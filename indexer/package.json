@@ -11,13 +11,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.2.13",
     "@rivl/contracts": "workspace:*",
     "hono": "4.13.13",
+    "pg": "8.23.1",
     "ponder": "0.18.2",
     "viem": "2.57.10"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
+    "@types/pg": "^8.23.1",
     "typescript": "5.9.3"
   },
   "engines": {

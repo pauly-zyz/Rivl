@@ -50,3 +50,6 @@ Butuh Node >= 22.12, pnpm 10, dan Foundry (`anvil`, `forge`).
 - Age gate, batas harian, dan Take a break disimpan di localStorage (`web/src/lib/limits.ts`).
   Take a break hanya menyembunyikan Create/Join; reveal, refund, dan klaim harus tetap bisa dipakai.
 - Test e2e memeriksa bahwa setiap halaman bebas error console.
+- Daily Spin holder RIVL (spec 5.6): API di `indexer/src/api/rewards/` (data di schema Postgres `rivl_rewards`,
+  bukan tabel Ponder), web di `web/src/app/(app)/spin`, `web/src/components/RewardsPanel.tsx`, kosmetik di
+  `web/src/lib/cosmetics.ts`. Klaim mingguan lewat contract `RivlRewards`.

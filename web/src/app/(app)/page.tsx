@@ -182,7 +182,7 @@ function VersusPanel() {
 function Corner({ label, name, address, corner }: { label: string; name: string; address?: string; corner: "red" | "blue" }) {
   return (
     <div className="flex flex-col items-center gap-3 text-center">
-      <Avatar address={address} corner={corner} size={92} className="rounded-3xl" />
+      <Avatar address={address} corner={corner} size={92} className="rounded-3xl" plain />
       <div>
         <div className={`eyebrow ${corner === "red" ? "text-red" : "text-blue"}`}>{label}</div>
         <div className="font-display mt-1 text-lg font-black">{name}</div>

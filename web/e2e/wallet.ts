@@ -9,7 +9,8 @@ import { duelArenaAbi } from "@rivl/contracts/abi";
 export type LocalDeployment = {
   chainId: number;
   rpcUrl: string;
-  contracts: { arena: Address; usdg: Address };
+  owner: Address;
+  contracts: { arena: Address; usdg: Address; rivl?: Address; rewards?: Address };
   testAccounts: Address[];
 };
 

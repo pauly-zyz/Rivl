@@ -11,6 +11,7 @@
  *   GET /players/:address/withdrawals      riwayat penarikan
  *   GET /results/recent                    duel terakhir yang selesai (feed Live results)
  *   GET /stats                             statistik global
+ *   /rewards/*                             Daily Spin holder RIVL (lihat src/api/rewards/routes.ts)
  *   /graphql, /sql/*                       akses umum bawaan Ponder
  */
 import { db } from "ponder:api";
@@ -19,11 +20,14 @@ import { Hono, type Context } from "hono";
 import { and, asc, client, desc, eq, gt, gte, graphql, inArray, lte, or, replaceBigInts, sql } from "ponder";
 import { isAddress, zeroAddress, type Hex } from "viem";
 
+import rewards from "./rewards/routes";
+
 const { duel } = schema;
 const app = new Hono();
 
 app.use("/graphql", graphql({ db, schema }));
 app.use("/sql/*", client({ db, schema }));
+app.route("/rewards", rewards);
 
 // ---------------------------------------------------------------------------
 // Helper

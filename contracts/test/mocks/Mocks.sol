@@ -17,6 +17,15 @@ contract MockUSDG is ERC20 {
     }
 }
 
+/// @notice Token RIVL tiruan (18 desimal) untuk chain lokal dan test Daily Spin.
+contract MockRivl is ERC20 {
+    constructor() ERC20("Mock Rivl", "RIVL") {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
 /// @notice Token yang memotong 1% setiap transfer, untuk memastikan ditolak.
 contract FeeOnTransferToken is ERC20 {
     constructor() ERC20("Fee Token", "FEE") {}

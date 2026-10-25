@@ -99,6 +99,20 @@ Nilai-nilai ini sudah dimasukkan ke `.env.example` dan `contracts/.env.example` 
 
 ---
 
+## 6. Daily Spin — langkah saat token RIVL launch
+
+Kode sudah siap dan teruji di chain lokal (`e2e/spin.spec.ts`). Belum ada yang dideploy ke mainnet.
+
+1. Deploy `RivlRewards` (`forge script script/DeployRewards.s.sol`, OWNER = wallet owner), lalu owner memanggil
+   `acceptOwnership()` jika deployer berbeda. Butuh persetujuan pemilik.
+2. Isi contract dengan RIVL (anggaran hadiah) dan sedikit ETH/USDG (pengembalian fee).
+3. Di Railway (service indexer) isi `RIVL_TOKEN_ADDRESS`, `RIVL_TOKEN_START_BLOCK`, `REWARDS_ADDRESS`,
+   `SPIN_SECRET`. Tidak perlu `DATABASE_SCHEMA` baru: data spin ada di schema `rivl_rewards`.
+4. Di /me → Daily Spin controls: isi tanggal launch, centang "Spin enabled", simpan.
+5. Setiap minggu: "Prepare this week" → "Publish week #N" (owner), lalu pemain klaim di /me.
+
+---
+
 ## Pertanyaan hukum (bagian 8)
 
 Belum dijawab; di luar cakupan teknis. Placeholder di `/terms` dan `/responsible-gaming` masih bertuliskan

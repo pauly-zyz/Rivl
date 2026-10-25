@@ -6,7 +6,8 @@
  * 3. Deploy MockUSDG (6 desimal) + DuelArena
  * 4. Atur tokenConfig (batas taruhan sesuai docs/spec.md bagian 3.4)
  * 5. Isi ETH dan USDG ke akun test
- * 6. Tulis alamat ke deployments/local.json
+ * 6. Deploy MockRivl + RivlRewards (Daily Spin), isi RIVL ke akun test dan anggaran hadiah
+ * 7. Tulis alamat ke deployments/local.json
  *
  * Tidak ada private key: transaksi dikirim dari akun Anvil yang sudah unlocked (eth_sendTransaction).
  * Jalankan sendiri: `pnpm dev:chain`, atau lewat `pnpm dev`.
@@ -43,6 +44,10 @@ const USDG_DECIMALS = 6;
 const ETH_PER_ACCOUNT = parseEther("100");
 const USDG_PER_ACCOUNT = parseUnits("10000", USDG_DECIMALS);
 const PLAYER_COUNT = 5;
+/** Akun #1–#3 memegang 3 juta RIVL (lolos syarat spin), sisanya 1 juta (di bawah batas 2 juta). */
+const RIVL_HOLDER = parseEther("3000000");
+const RIVL_SMALL = parseEther("1000000");
+const REWARDS_BUDGET_RIVL = parseEther("20000000");
 
 // docs/spec.md bagian 3.4
 const ETH_MIN_STAKE = parseEther("0.0005");
@@ -198,6 +203,17 @@ async function deploy(rpcUrl: string, extraAccounts: Address[]): Promise<LocalDe
   testAccounts.forEach((a, i) => log.info(`  ${i < players.length ? `#${i + 1}` : "extra"} ${a}`));
   log.info(`owner ${owner} · treasury ${treasury}`);
 
+  const rivl = await deployContract("Mocks.sol", "MockRivl");
+  const rewards = await deployContract("RivlRewards.sol", "RivlRewards", [owner]);
+  for (const [i, account] of testAccounts.entries()) {
+    await send(rivl.address, mockUsdgAbi, "mint", [account, i < 3 ? RIVL_HOLDER : RIVL_SMALL]);
+  }
+  await send(rivl.address, mockUsdgAbi, "mint", [rewards.address, REWARDS_BUDGET_RIVL]);
+  await send(usdg.address, mockUsdgAbi, "mint", [rewards.address, parseUnits("1000", USDG_DECIMALS)]);
+  const fund = await wallet.sendTransaction({ to: rewards.address, value: parseEther("1"), account: owner });
+  await publicClient.waitForTransactionReceipt({ hash: fund });
+  log.info("Daily Spin: akun #1–#3 memegang 3 jt RIVL, lainnya 1 jt; RivlRewards diisi 20 jt RIVL + 1 ETH + 1.000 USDG");
+
   return {
     chainId: LOCAL_CHAIN_ID,
     rpcUrl,
@@ -205,7 +221,7 @@ async function deploy(rpcUrl: string, extraAccounts: Address[]): Promise<LocalDe
     deployedAt: new Date().toISOString(),
     owner,
     treasury,
-    contracts: { arena: arena.address, usdg: usdg.address },
+    contracts: { arena: arena.address, usdg: usdg.address, rivl: rivl.address, rewards: rewards.address },
     usdgDecimals: USDG_DECIMALS,
     testAccounts,
   };

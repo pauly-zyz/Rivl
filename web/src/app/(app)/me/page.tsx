@@ -7,8 +7,9 @@ import { useRef, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 
-import { Avatar } from "@/components/Avatar";
+import { Avatar, PlayerTitle } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
+import { MyRewards, SpinOwnerPanel } from "@/components/RewardsPanel";
 import { Badge, BreakNotice, Button, Card, EmptyState, FieldError, SectionTitle, TxNotice } from "@/components/ui";
 import { findToken, useArenaInfo, useNow, type TokenInfo } from "@/hooks/useArena";
 import { useAwaitingReveal } from "@/hooks/useAwaitingReveal";
@@ -44,16 +45,19 @@ function MyDuels({ address }: { address: Address }) {
         <Avatar address={address} corner="red" size={60} className="rounded-2xl" />
         <div className="min-w-0">
           <h1 className="font-display text-3xl font-black sm:text-4xl">My duels</h1>
+          <PlayerTitle address={address} />
           <p className="mt-1 truncate font-mono text-sm text-muted">{address}</p>
         </div>
       </header>
       <OwnershipInvite address={address} />
       <OwnerPanel address={address} />
+      <SpinOwnerPanel address={address} />
       <PendingReveals address={address} />
       <div className="grid gap-8 lg:grid-cols-2">
         <Claimable address={address} />
         <SuitBackup address={address} />
       </div>
+      <MyRewards address={address} />
       <PersonalLimits address={address} />
       <Stats address={address} />
       <History address={address} />

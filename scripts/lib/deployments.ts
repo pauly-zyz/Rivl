@@ -17,6 +17,9 @@ export type LocalDeployment = {
   contracts: {
     arena: Address;
     usdg: Address;
+    /** Token RIVL tiruan + RivlRewards untuk Daily Spin (chain lokal saja). */
+    rivl?: Address;
+    rewards?: Address;
   };
   usdgDecimals: number;
   testAccounts: Address[];

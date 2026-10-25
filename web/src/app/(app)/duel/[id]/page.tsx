@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useAccount, useReadContract } from "wagmi";
 
 import { CoinFlip, DiceDuel, SuitHands } from "@/components/arena";
-import { Avatar } from "@/components/Avatar";
+import { Avatar, PlayerTitle } from "@/components/Avatar";
 import { GameIcon } from "@/components/icons";
 import { JoinDuelModal } from "@/components/JoinDuelModal";
 import { MatchOverlay, useMatchFlow, WaitingRoom } from "@/components/matchFlow";
@@ -238,6 +238,7 @@ function Corner({
           )}
           {you && <span className="ml-1.5 font-sans text-xs font-bold text-muted">(you)</span>}
         </div>
+        <PlayerTitle address={who} className="mt-0.5 block" />
         <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${red ? "" : "justify-end"}`}>
           {choice && (
             <span className="rounded-md bg-bg/60 px-1.5 py-0.5 text-[11px] font-semibold text-muted">{choice}</span>

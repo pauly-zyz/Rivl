@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Avatar } from "./Avatar";
+import { Avatar, PlayerTitle } from "./Avatar";
 import { useNotificationPermission } from "@/lib/notify";
 import type { Status } from "@/lib/duel";
 import { shortAddress } from "@/lib/format";
@@ -115,6 +115,7 @@ function Fighter({ address, corner, label }: { address?: string; corner: "red" |
       <Avatar address={address} corner={corner} size={72} className="rounded-2xl" />
       <span className={`eyebrow text-[10px] ${corner === "red" ? "text-red" : "text-blue"}`}>{label}</span>
       <span className="font-mono text-xs text-ink/80">{address ? shortAddress(address) : "…"}</span>
+      <PlayerTitle address={address} />
     </div>
   );
 }
